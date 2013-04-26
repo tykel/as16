@@ -1,5 +1,5 @@
 /*
- *   as16 - the chip16 emulator
+ *   as16 - the chip16 assembler 
  *   Copied partly from mash16
  *   Copyright (C) 2012-2013 tykel
  *
