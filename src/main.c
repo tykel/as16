@@ -34,7 +34,7 @@ int file_read(const char *fn, void *buf)
     if((file = fopen(fn, "rb")) == NULL)
         return ERR_FILE;
     fseek(file, 0, SEEK_END);
-    len = ftell(fn);
+    len = ftell(file);
     fseek(file, 0, SEEK_SET);
 
     if((buf = malloc(len)) == NULL)
