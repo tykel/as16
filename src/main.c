@@ -33,15 +33,15 @@ int file_read(const char *fn, void *buf)
 
     if((file = fopen(fn, "rb")) == NULL)
         return ERR_FILE;
-    fseek(fn, 0, SEEK_END);
+    fseek(file, 0, SEEK_END);
     len = ftell(fn);
-    fseek(fn, 0, SEEK_SET);
+    fseek(file, 0, SEEK_SET);
 
     if((buf = malloc(len)) == NULL)
         return ERR_MALLOC;
-    if(fread(buf, 1, len, fn) < len)
+    if(fread(buf, 1, len, file) < len)
         return ERR_FILE;
-    fclose(fn);
+    fclose(file);
 
     return len;
 }
