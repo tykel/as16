@@ -17,16 +17,15 @@
  *   along with as16.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "defs.h"
 #include "strings.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-
-#define ERR_FILE   -1
-#define ERR_MALLOC -2
+#include <string.h>
 
 /* Read a binary file into an unallocated buffer. */
-int file_read(const char *fn, void *buf)
+int file_read(const char *fn, char **buf)
 {
     FILE *file = NULL;
     int len;
@@ -35,11 +34,12 @@ int file_read(const char *fn, void *buf)
         return ERR_FILE;
     fseek(file, 0, SEEK_END);
     len = ftell(file);
-    fseek(file, 0, SEEK_SET);
+    rewind(file);
 
-    if((buf = malloc(len)) == NULL)
+    *buf = malloc(len);
+    if(*buf == NULL)
         return ERR_MALLOC;
-    if(fread(buf, 1, len, file) < len)
+    if(fread(*buf, 1, len, file) < len)
         return ERR_FILE;
     fclose(file);
 
@@ -48,6 +48,28 @@ int file_read(const char *fn, void *buf)
 
 int main(int argc, char *argv[])
 {
-    printf("as16: hello world\n");
+    char *buf = NULL, *line = NULL;
+    int sz = 0, ln = 1;
+    instr_t is[1000];
+
+    /* TODO: Proper argument parsing */
+    if(argc > 1)
+    {
+        sz = file_read(argv[1], &buf);
+        printf("file length: %d bytes\n", sz);
+
+        line = strtok(buf, "\n");
+        printf("file: %s\n", buf); 
+        while(line != NULL)
+        {
+            is[ln - 1].str = line;
+            is[ln - 1].ln = ln;
+            printf("%02d: %s\n", is[ln - 1].ln, is[ln - 1].str);
+            ++ln;
+            line = strtok(NULL, "\n");
+        }
+        free(buf);
+    }
+        
     exit(0);
 }
