@@ -24,6 +24,109 @@
 #include <stdlib.h>
 #include <string.h>
 
+void free_string(string_t *str)
+{
+    free(str->str);
+    free(str);
+}
+
+string_t* token_next(char **str)
+{
+    int len, i;
+    char *p;
+    string_t *token;
+
+    p = *str;
+    len = 0;
+    /* Determine token length */
+    while (*p != ' ' && *p != '\t' && *p != '\0' && *p != '\n' && *p != ',')
+    {
+        ++len;
+        ++p;
+    }
+
+    /* Allocate and copy string */
+    token = malloc(sizeof(string_t));
+    token->str = malloc(len + 1);
+    for (i = 0; i<len; ++i)
+        token->str[i] = (*str)[i];
+    token->str[len] = '\0';
+    token->len = len + 1;
+
+    *str = p;
+    while(**str == ' ' || **str == '\t' || **str == ',') // || **str == '\n' || **str == '\0')
+        ++*str;
+
+    return token;
+}
+
+int token_islabel(string_t *str)
+{
+    int len = str->len;
+    return (str->str[len - 2] == ':');
+}
+
+int token_iscomment(string_t *str)
+{
+    return (str->str[0] == ';');
+}
+
+int line_parse(instr_t *instr)
+{
+    string_t *toktemp;
+    int totallen, wordlen, token, islabel;
+    char *sp;
+    
+    wordlen = 0;
+    token = 0;
+    islabel = 0;
+    sp = instr->str;
+    totallen = strlen(sp);
+    
+    /* Label */
+    if(*sp == '\0')
+        return 0;
+    toktemp = token_next(&sp);
+    //sp += toktemp->len;
+    if(token_islabel(toktemp))
+       instr->toklabel = toktemp;
+
+    /* Mnemonic */
+    if(instr->toklabel != NULL)
+    {
+        if(*sp == '\0')
+            return ERR_NO_MNEMONIC;
+        instr->tokmnem = token_next(&sp);
+        sp += toktemp->len;
+    }
+    else
+        instr->tokmnem = toktemp;
+
+    /* OP1: RX / N / HHLL */
+    if(*sp == '\0')
+        return 0;
+    toktemp = token_next(&sp);
+    //sp += toktemp->len;
+    if(!token_iscomment(toktemp))
+        instr->tokop1 = toktemp;
+
+    /* OP2: RY / N / HHLL */
+    if(*sp == '\0')
+        return 0;
+    toktemp = token_next(&sp);
+    //sp += toktemp->len;
+    if(!token_iscomment(toktemp))
+        instr->tokop2 = toktemp;
+
+    /* OP3: RZ / HHLL */
+    if(*sp == '\0')
+        return 0;
+    toktemp = token_next(&sp);
+    //sp += toktemp->len;
+    if(!token_iscomment(toktemp))
+        instr->tokop3 = toktemp;
+}
+
 /* Read a binary file into an unallocated buffer. */
 int file_read(const char *fn, char **buf)
 {
@@ -36,7 +139,7 @@ int file_read(const char *fn, char **buf)
     len = ftell(file);
     rewind(file);
 
-    *buf = malloc(len);
+    *buf = malloc(len + 1);
     if(*buf == NULL)
         return ERR_MALLOC;
     if(fread(*buf, 1, len, file) < len)
@@ -56,15 +159,24 @@ int main(int argc, char *argv[])
     if(argc > 1)
     {
         sz = file_read(argv[1], &buf);
+        buf[sz] = '\0';
         printf("file length: %d bytes\n", sz);
+        printf("file contents:\n%s\n", buf);
 
         line = strtok(buf, "\n");
-        printf("file: %s\n", buf); 
         while(line != NULL)
         {
             is[ln - 1].str = line;
             is[ln - 1].ln = ln;
-            printf("%02d: %s\n", is[ln - 1].ln, is[ln - 1].str);
+            line_parse(&is[ln - 1]);
+            printf("%02d: label: '%s' mnem: '%s' op1: '%s' op2: '%s' op3: '%s'\n",
+                    is[ln - 1].ln,
+                    is[ln - 1].toklabel != NULL ? is[ln - 1].toklabel->str : "",
+                    is[ln - 1].tokmnem != NULL ? is[ln - 1].tokmnem->str : "",
+                    is[ln - 1].tokop1 != NULL ? is[ln - 1].tokop1->str : "",
+                    is[ln - 1].tokop2 != NULL ? is[ln - 1].tokop2->str : "",
+                    is[ln - 1].tokop3 != NULL ? is[ln - 1].tokop3->str : "");
+            printf("%02d: '%s' [%d]\n", is[ln - 1].ln, is[ln - 1].str, is[ln - 1].op);
             ++ln;
             line = strtok(NULL, "\n");
         }

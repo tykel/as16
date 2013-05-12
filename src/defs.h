@@ -25,7 +25,11 @@
 typedef enum
 {
     ERR_FILE = -1,
-    ERR_MALLOC = -2
+    ERR_MALLOC = -2,
+    ERR_NO_MNEMONIC = -3,
+    ERR_NO_OP1 = -4,
+    ERR_NO_OP2 = -5,
+    ERR_NO_OP3 = -6
 } err_t;
 
 
@@ -56,19 +60,26 @@ typedef enum
     INSTR_OPYX0Z00
 } instr_type_t;
 
+/* Help out with the string manip */
+typedef struct
+{
+    char *str;
+    int len;
+} string_t;
+
 
 /* Structure holding state of an instruction, both in textual
  * form and compiled form. */
 typedef struct
 {
-    const char *str;
+    char *str;
     int ln;
 
     instr_args_t args;
     instr_type_t type;
 
-    int x, y, z;
-    int hhll, n;
+    string_t *toklabel, *tokmnem, *tokop1, *tokop2, *tokop3;
+    int op, x, y, z, hhll, n;
 
     int addr;
 
