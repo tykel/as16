@@ -61,7 +61,7 @@ string_t* token_next(char **str)
     token->len = len + 1;
 
     *str = p;
-    while(**str == ' ' || **str == '\t' || **str == ',') // || **str == '\n' || **str == '\0')
+    while(**str == ' ' || **str == '\t' || **str == ',')
         ++*str;
 
     return token;
@@ -78,17 +78,32 @@ int token_iscomment(string_t *str)
     return (str->str[0] == ';');
 }
 
+int token_mnem2op(string_t *str)
+{
+    int i, c;
+    
+    for (i = 0; i < 256; ++i)
+    {
+        if (strcmp(str->str, str_ops[i]) == 0)
+            return i;
+        else if (str->str[i] == 'j' || str->str[i] == 'c')
+        {
+            for (c = 0; c < 16; ++c)
+            {
+                if (strcmp(str->str + 1, str_cond[c]) == 0)
+                    return (str->str[i] == 'j' ? 0x12 : 0x17);
+            }
+        }
+    }
+    return -1;
+}
+
 int line_parse(instr_t *instr)
 {
     string_t *toktemp;
-    int totallen, wordlen, token, islabel;
     char *sp;
     
-    wordlen = 0;
-    token = 0;
-    islabel = 0;
     sp = instr->str;
-    totallen = strlen(sp);
     
     /* Label */
     if(*sp == '\0')
@@ -176,6 +191,7 @@ int main(int argc, char *argv[])
             is[ln - 1].str = line;
             is[ln - 1].ln = ln;
             line_parse(&is[ln - 1]);
+            is[ln - 1].op = token_mnem2op(is[ln - 1].tokmnem);
             printf("%02d: l: '%s' m: '%s' o1: '%s' o2: '%s' o3: '%s'\n",
                     is[ln - 1].ln,
                     is[ln - 1].toklabel != NULL ? is[ln - 1].toklabel->str : "",

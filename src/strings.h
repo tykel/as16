@@ -20,7 +20,7 @@
 #ifndef STRINGS_
 #define STRINGS_H
 
-extern const char* const str_ops[];
-extern const char* const str_cond[];
+extern const char* const str_ops[256];
+extern const char* const str_cond[16];
 
 #endif
