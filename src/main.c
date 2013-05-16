@@ -32,12 +32,20 @@ void free_string(string_t *str)
 
 string_t* token_next(char **str)
 {
-    int len, i;
+    int len, i, offs;
     char *p;
     string_t *token;
 
     p = *str;
-    len = 0;
+    len = offs = 0;
+    /* Allocate string */
+    token = malloc(sizeof(string_t));
+    token->str = NULL;
+    while (*p == ' ' || *p == '\t')
+    {
+        ++offs;
+        ++p;
+    }
     /* Determine token length */
     while (*p != ' ' && *p != '\t' && *p != '\0' && *p != '\n' && *p != ',')
     {
@@ -45,11 +53,10 @@ string_t* token_next(char **str)
         ++p;
     }
 
-    /* Allocate and copy string */
-    token = malloc(sizeof(string_t));
+    /* Copy string */
     token->str = malloc(len + 1);
     for (i = 0; i<len; ++i)
-        token->str[i] = (*str)[i];
+        token->str[i] = (*str)[offs+i];
     token->str[len] = '\0';
     token->len = len + 1;
 
@@ -87,7 +94,6 @@ int line_parse(instr_t *instr)
     if(*sp == '\0')
         return 0;
     toktemp = token_next(&sp);
-    //sp += toktemp->len;
     if(token_islabel(toktemp))
        instr->toklabel = toktemp;
 
@@ -97,7 +103,6 @@ int line_parse(instr_t *instr)
         if(*sp == '\0')
             return ERR_NO_MNEMONIC;
         instr->tokmnem = token_next(&sp);
-        sp += toktemp->len;
     }
     else
         instr->tokmnem = toktemp;
@@ -106,25 +111,27 @@ int line_parse(instr_t *instr)
     if(*sp == '\0')
         return 0;
     toktemp = token_next(&sp);
-    //sp += toktemp->len;
-    if(!token_iscomment(toktemp))
-        instr->tokop1 = toktemp;
+    if(token_iscomment(toktemp))
+	return 0;
+    instr->tokop1 = toktemp;
 
     /* OP2: RY / N / HHLL */
     if(*sp == '\0')
         return 0;
     toktemp = token_next(&sp);
-    //sp += toktemp->len;
-    if(!token_iscomment(toktemp))
-        instr->tokop2 = toktemp;
+    if(token_iscomment(toktemp))
+        return 0;
+    instr->tokop2 = toktemp;
 
     /* OP3: RZ / HHLL */
     if(*sp == '\0')
         return 0;
     toktemp = token_next(&sp);
-    //sp += toktemp->len;
-    if(!token_iscomment(toktemp))
-        instr->tokop3 = toktemp;
+    if(token_iscomment(toktemp))
+        return 0;
+    instr->tokop3 = toktemp;
+
+    return 0;
 }
 
 /* Read a binary file into an unallocated buffer. */
@@ -169,7 +176,7 @@ int main(int argc, char *argv[])
             is[ln - 1].str = line;
             is[ln - 1].ln = ln;
             line_parse(&is[ln - 1]);
-            printf("%02d: label: '%s' mnem: '%s' op1: '%s' op2: '%s' op3: '%s'\n",
+            printf("%02d: l: '%s' m: '%s' o1: '%s' o2: '%s' o3: '%s'\n",
                     is[ln - 1].ln,
                     is[ln - 1].toklabel != NULL ? is[ln - 1].toklabel->str : "",
                     is[ln - 1].tokmnem != NULL ? is[ln - 1].tokmnem->str : "",
