@@ -36,8 +36,10 @@ typedef enum
 /* Possible argument combinations. */
 typedef enum
 {
-    INSTR_NONE,
+    INSTR_ERR = -1,
+    INSTR_NONE = 0,
     INSTR_IMM,
+    INSTR_IMM_IMM,
     INSTR_REG,
     INSTR_REG_IMM,
     INSTR_REG_REG,
@@ -49,7 +51,8 @@ typedef enum
 /* All the instruction encodings. */
 typedef enum
 {
-    INSTR_OP000000,
+    INSTR_OPERR = -1,
+    INSTR_OP000000 = 0,
     INSTR_OP000N00,
     INSTR_OP00LLHH,
     INSTR_OP0X0000,
@@ -86,6 +89,8 @@ typedef struct
 
 } instr_t;
 
+extern const instr_args_t op_args[256];
+extern const instr_type_t op_types[256];
 
 #endif
 
