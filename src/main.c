@@ -24,6 +24,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Program flow (w/ support for macros):
+ * - read file into line array
+ * - run "preprocessor" on lines, substitute macros by defs
+ * - run tokeniser to generate instr_t array
+ * - run lexer to substitute labels etc.
+ * - run code generator
+ */
+
 void free_string(string_t *str)
 {
     free(str->str);
@@ -98,6 +107,23 @@ int token_mnem2op(string_t *str)
     return -1;
 }
 
+string_t* token_getlabel(string_t *str)
+{
+    int i;
+    string_t *label = NULL;
+
+    label = malloc(sizeof(string_t));
+    label->len = 0;
+    if (!token_islabel(str))
+        return label;
+    label->str = malloc(str->len - 1);
+    label->len = str->len - 1;
+    for (i = 0; i < str->len-2; ++i)
+        label->str[i] = str->str[i];
+    label->str[str->len - 2] = '\0';
+    return label;
+}
+
 int line_parse(instr_t *instr)
 {
     string_t *toktemp;
@@ -115,7 +141,7 @@ int line_parse(instr_t *instr)
        return 0;
     }
     if(token_islabel(toktemp))
-       instr->toklabel = toktemp;
+       instr->toklabel = token_getlabel(toktemp);
 
     /* Mnemonic */
     if(instr->toklabel != NULL)
