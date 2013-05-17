@@ -121,7 +121,10 @@ int line_parse(instr_t *instr)
     if(instr->toklabel != NULL)
     {
         if(*sp == '\0')
-            return ERR_NO_MNEMONIC;
+		{
+			instr->islabel = 1;
+            return 0;
+		}
         instr->tokmnem = token_next(&sp);
     }
     else
@@ -202,7 +205,8 @@ int main(int argc, char *argv[])
             }
             else
             {
-                is[ln - 1].op = token_mnem2op(is[ln - 1].tokmnem);
+                if(!is[ln - 1].islabel)
+                    is[ln - 1].op = token_mnem2op(is[ln - 1].tokmnem);
                 printf("%02d: l[%s] m[%s] 1[%s] 2[%s] 3[%s]    (op: %d)\n",
                     is[ln - 1].ln,
                     is[ln - 1].toklabel != NULL ? is[ln - 1].toklabel->str : "",

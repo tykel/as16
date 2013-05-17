@@ -74,7 +74,7 @@ typedef struct
 {
     char *str;
     int ln;
-    int iscomment;
+    int iscomment, islabel;
 
     instr_args_t args;
     instr_type_t type;
