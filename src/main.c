@@ -109,6 +109,11 @@ int line_parse(instr_t *instr)
     if(*sp == '\0')
         return 0;
     toktemp = token_next(&sp);
+    if(token_iscomment(toktemp))
+    {
+       instr->iscomment = 1;
+       return 0;
+    }
     if(token_islabel(toktemp))
        instr->toklabel = toktemp;
 
@@ -191,15 +196,23 @@ int main(int argc, char *argv[])
             is[ln - 1].str = line;
             is[ln - 1].ln = ln;
             line_parse(&is[ln - 1]);
-            is[ln - 1].op = token_mnem2op(is[ln - 1].tokmnem);
-            printf("%02d: l: '%s' m: '%s' o1: '%s' o2: '%s' o3: '%s'\n",
+            if(is[ln - 1].iscomment)
+            {
+                printf("%02d: comment\n", is[ln - 1].ln);
+            }
+            else
+            {
+                is[ln - 1].op = token_mnem2op(is[ln - 1].tokmnem);
+                printf("%02d: l[%s] m[%s] 1[%s] 2[%s] 3[%s]    (op: %d)\n",
                     is[ln - 1].ln,
                     is[ln - 1].toklabel != NULL ? is[ln - 1].toklabel->str : "",
                     is[ln - 1].tokmnem != NULL ? is[ln - 1].tokmnem->str : "",
                     is[ln - 1].tokop1 != NULL ? is[ln - 1].tokop1->str : "",
                     is[ln - 1].tokop2 != NULL ? is[ln - 1].tokop2->str : "",
-                    is[ln - 1].tokop3 != NULL ? is[ln - 1].tokop3->str : "");
-            printf("%02d: '%s' [%d]\n", is[ln - 1].ln, is[ln - 1].str, is[ln - 1].op);
+                    is[ln - 1].tokop3 != NULL ? is[ln - 1].tokop3->str : "",
+                    is[ln - 1].op);
+            }
+            printf("%02d: '%s'\n", is[ln - 1].ln, is[ln - 1].str);
             ++ln;
             line = strtok(NULL, "\n");
         }
