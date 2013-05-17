@@ -21,6 +21,8 @@
 #define STRINGS_H
 
 extern const char* const str_ops[256];
+extern const char* const str_ops_alt[2];
 extern const char* const str_cond[16];
+extern const char* const str_cond_alt[16];
 
 #endif

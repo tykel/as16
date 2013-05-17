@@ -17,6 +17,20 @@
  *   along with as16.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/*
+ * str_ops and str_cond are regular reverse lookup tables: if the element
+ * you are indexing is what you are looking for, return that index.
+ * 
+ * str_ops_alt and str_cond_alt work differently: compare the string at each
+ * _even_ index; if the element you are indexing is what you are looking for,
+ * return the string following it.
+ *
+ * Hence, functions should first check if the string is an *_alt string, so
+ * it may be substituted _before_ the reverse lookup.
+ * (suboptimal general case, but simpler logic)
+ */
+
+
 const char* const str_ops[256] =
 {
     /* 0x */
@@ -52,8 +66,20 @@ const char* const str_ops[256] =
     /* Fx */
     "___","___","___","___","___","___","___","___","___","___","___","___","___","___","___","___"
 };
+
+const char* const str_ops_alt[2] =
+{
+    "sal", "shl"
+};
+
 const char* const str_cond[16] =
 {
-    "z","nz","n","nn","p","o","no","a","nc","c","be","g","ge","l","le","*"
+    "z","nz","n","nn","p","o","no","a","ae","b","be","g","ge","l","le","*"
+};
+
+const char* const str_cond_alt[16] = 
+{
+    "nc", "ae",
+    "c", "b"
 };
 
