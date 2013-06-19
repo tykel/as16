@@ -76,6 +76,7 @@ typedef struct
 typedef struct
 {
     char *str;
+    int len;
     int ln;
     int iscomment, islabel;
 

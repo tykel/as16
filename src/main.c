@@ -123,23 +123,28 @@ int file_read(const char *fn, char **buf)
 
 int main(int argc, char *argv[])
 {
-    char *buf = NULL, *line = NULL;
-    int sz = 0, ln = 1;
+    FILE *file = NULL;
+    char line[200], *sp;
+    int ln = 1, len = 0;
     instr_t is[1000];
 
     /* TODO: Proper argument parsing */
     if(argc > 1)
     {
-        sz = file_read(argv[1], &buf);
-        buf[sz] = '\0';
-        printf("file length: %d bytes\n", sz);
-        printf("file contents:\n%s\n", buf);
+        file = fopen(argv[1], "r");
+        fgets(line, 200, file);
 
-        line = strtok(buf, "\n");
-        while(line != NULL)
+        /*line = strtok(buf, "\n");*/
+        while(line != NULL && !feof(file))
         {
+            sp = line;
+            while(*sp != '\n') ++sp;
+            len = (int)(sp - line);
+            *sp = '\0';
+            
             is[ln - 1].str = line;
             is[ln - 1].ln = ln;
+            is[ln - 1].len = len;
             line_parse(&is[ln - 1]);
             if(is[ln - 1].iscomment)
             {
@@ -147,7 +152,7 @@ int main(int argc, char *argv[])
             }
             else
             {
-                if(!is[ln - 1].islabel)
+                if(!is[ln - 1].islabel && is[ln - 1].len > 0)
                     is[ln - 1].op = token_mnem2op(is[ln - 1].tokmnem);
                 printf("%02d: l[%s] m[%s] 1[%s] 2[%s] 3[%s]    (op: %d)\n",
                     is[ln - 1].ln,
@@ -160,9 +165,10 @@ int main(int argc, char *argv[])
             }
             printf("%02d: '%s'\n", is[ln - 1].ln, is[ln - 1].str);
             ++ln;
-            line = strtok(NULL, "\n");
+            fgets(line, 200, file);
+            /*line = strtok(NULL, "\n");*/
         }
-        free(buf);
+        /*free(buf);*/
     }
         
     exit(0);
