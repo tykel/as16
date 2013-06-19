@@ -26,6 +26,7 @@ as16: $(OBJECTS)
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 
 $(OBJ)/%.o: $(SRC)/%.c
+	@mkdir -p $(OBJ)
 	$(CC) -c $(CFLAGS) $< -o $@
 
 clean:
