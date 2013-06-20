@@ -25,6 +25,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Globals */
+
+#define MAX_LINES 10000
+
+static instr_t is[MAX_LINES];
+static symbol_t ss[MAX_LINES];
+static int symind;
+
 /*
  * Program flow (w/ support for macros):
  * - read file into line array
@@ -53,11 +61,14 @@ int line_parse(instr_t *instr)
     toktemp = token_next(&sp);
     if(token_iscomment(toktemp))
     {
-       instr->iscomment = 1;
-       return 0;
+        instr->iscomment = 1;
+        return 0;
     }
     if(token_islabel(toktemp))
-       instr->toklabel = token_getlabel(toktemp);
+    {
+        instr->toklabel = token_getlabel(toktemp);
+        ss[symind++].str = instr->toklabel->str;
+    }
 
     /* Mnemonic */
     if(instr->toklabel != NULL)
@@ -125,8 +136,7 @@ int main(int argc, char *argv[])
 {
     FILE *file = NULL;
     char line[200], *sp;
-    int ln = 1, len = 0;
-    instr_t is[1000];
+    int ln = 1, len = 0, i;
 
     /* TODO: Proper argument parsing */
     if(argc > 1)
@@ -134,7 +144,6 @@ int main(int argc, char *argv[])
         file = fopen(argv[1], "r");
         fgets(line, 200, file);
 
-        /*line = strtok(buf, "\n");*/
         while(line != NULL && !feof(file))
         {
             sp = line;
@@ -166,9 +175,13 @@ int main(int argc, char *argv[])
             printf("%02d: '%s'\n", is[ln - 1].ln, is[ln - 1].str);
             ++ln;
             fgets(line, 200, file);
-            /*line = strtok(NULL, "\n");*/
         }
-        /*free(buf);*/
+        
+        printf("\n\n---------\n");
+        for(i = 0; i < symind; ++i)
+        {
+            printf("%02d: symbol = '%s'\n", i, ss[i].str);
+        }
     }
         
     exit(0);

@@ -90,6 +90,14 @@ typedef struct
 
 } instr_t;
 
+/* Structure holding a mapping from label/constant to its
+ * numerical value. */
+typedef struct
+{
+    char *str;
+    int val;
+} symbol_t;
+
 extern const instr_args_t op_args[256];
 extern const instr_type_t op_types[256];
 

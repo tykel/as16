@@ -1,5 +1,6 @@
 *.s
 as16
+asm
 tags
 types_c.taghl
 test.s
