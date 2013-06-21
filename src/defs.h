@@ -96,6 +96,7 @@ typedef struct
 {
     char *str;
     int val;
+    int islabel;
 } symbol_t;
 
 extern const instr_args_t op_args[256];

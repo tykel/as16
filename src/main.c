@@ -67,7 +67,9 @@ int line_parse(instr_t *instr)
     if(token_islabel(toktemp))
     {
         instr->toklabel = token_getlabel(toktemp);
-        ss[symind++].str = instr->toklabel->str;
+        ss[symind].str = instr->toklabel->str;
+        ss[symind].val = -1;
+        ss[symind++].islabel = 1;
     }
 
     /* Mnemonic */
@@ -98,6 +100,13 @@ int line_parse(instr_t *instr)
     if(token_iscomment(toktemp))
         return 0;
     instr->tokop2 = toktemp;
+    if(instr->tokop1->str[0] == 'e' &&
+       instr->tokop1->str[1] == 'q' &&
+       instr->tokop1->str[2] == 'u')
+    {
+        ss[symind].str = instr->tokmnem->str;
+        ss[symind++].val = atoi(instr->tokop2->str);
+    }
 
     /* OP3: RZ / HHLL */
     if(*sp == '\0')
@@ -180,7 +189,7 @@ int main(int argc, char *argv[])
         printf("\n\n---------\n");
         for(i = 0; i < symind; ++i)
         {
-            printf("%02d: symbol = '%s'\n", i, ss[i].str);
+            printf("%02d: [ '%s' : %d / 0x%x ]\n", i, ss[i].str, ss[i].val, ss[i].val);
         }
     }
         
