@@ -29,8 +29,8 @@
 
 #define MAX_LINES 10000
 
-static instr_t is[MAX_LINES];
-static symbol_t ss[MAX_LINES];
+static instr_t instrs[MAX_LINES];
+static symbol_t syms[MAX_LINES];
 static int symind;
 
 /*
@@ -67,9 +67,9 @@ int line_parse(instr_t *instr)
     if(token_islabel(toktemp))
     {
         instr->toklabel = token_getlabel(toktemp);
-        ss[symind].str = instr->toklabel->str;
-        ss[symind].val = -1;
-        ss[symind++].islabel = 1;
+        syms[symind].str = instr->toklabel->str;
+        syms[symind].val = -1;
+        syms[symind++].islabel = 1;
     }
 
     /* Mnemonic */
@@ -104,8 +104,8 @@ int line_parse(instr_t *instr)
        instr->tokop1->str[1] == 'q' &&
        instr->tokop1->str[2] == 'u')
     {
-        ss[symind].str = instr->tokmnem->str;
-        ss[symind++].val = token_getnum(instr->tokop2);
+        syms[symind].str = instr->tokmnem->str;
+        syms[symind++].val = token_getnum(instr->tokop2);
     }
 
     /* OP3: RZ / HHLL */
@@ -160,28 +160,28 @@ int main(int argc, char *argv[])
             len = (int)(sp - line);
             *sp = '\0';
             
-            is[ln - 1].str = line;
-            is[ln - 1].ln = ln;
-            is[ln - 1].len = len;
-            line_parse(&is[ln - 1]);
-            if(is[ln - 1].iscomment)
+            instrs[ln - 1].str = line;
+            instrs[ln - 1].ln = ln;
+            instrs[ln - 1].len = len;
+            line_parse(&instrs[ln - 1]);
+            if(instrs[ln - 1].iscomment)
             {
-                printf("%02d: comment\n", is[ln - 1].ln);
+                printf("%02d: comment\n", instrs[ln - 1].ln);
             }
             else
             {
-                if(!is[ln - 1].islabel && is[ln - 1].len > 0)
-                    is[ln - 1].op = token_mnem2op(is[ln - 1].tokmnem);
+                if(!instrs[ln - 1].islabel && instrs[ln - 1].len > 0)
+                    instrs[ln - 1].op = token_mnem2op(instrs[ln - 1].tokmnem);
                 printf("%02d: l[%s] m[%s] 1[%s] 2[%s] 3[%s]    (op: %d)\n",
-                    is[ln - 1].ln,
-                    is[ln - 1].toklabel != NULL ? is[ln - 1].toklabel->str : "",
-                    is[ln - 1].tokmnem != NULL ? is[ln - 1].tokmnem->str : "",
-                    is[ln - 1].tokop1 != NULL ? is[ln - 1].tokop1->str : "",
-                    is[ln - 1].tokop2 != NULL ? is[ln - 1].tokop2->str : "",
-                    is[ln - 1].tokop3 != NULL ? is[ln - 1].tokop3->str : "",
-                    is[ln - 1].op);
+                    instrs[ln - 1].ln,
+                    instrs[ln - 1].toklabel != NULL ? instrs[ln - 1].toklabel->str : "",
+                    instrs[ln - 1].tokmnem != NULL ? instrs[ln - 1].tokmnem->str : "",
+                    instrs[ln - 1].tokop1 != NULL ? instrs[ln - 1].tokop1->str : "",
+                    instrs[ln - 1].tokop2 != NULL ? instrs[ln - 1].tokop2->str : "",
+                    instrs[ln - 1].tokop3 != NULL ? instrs[ln - 1].tokop3->str : "",
+                    instrs[ln - 1].op);
             }
-            printf("%02d: '%s'\n", is[ln - 1].ln, is[ln - 1].str);
+            printf("%02d: '%s'\n", instrs[ln - 1].ln, instrs[ln - 1].str);
             ++ln;
             fgets(line, 200, file);
         }
@@ -189,7 +189,7 @@ int main(int argc, char *argv[])
         printf("\n\n---------\n");
         for(i = 0; i < symind; ++i)
         {
-            printf("%02d: [ '%s' : %d / 0x%x ]\n", i, ss[i].str, ss[i].val, ss[i].val);
+            printf("%02d: [ '%s' : %d / 0x%x ]\n", i, syms[i].str, syms[i].val, syms[i].val);
         }
     }
         
