@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 string_t* token_next(char **str)
 {
@@ -110,4 +111,88 @@ string_t* token_getlabel(string_t *str)
     return label;
 }
 
+int token_getregindex(string_t *str)
+{
+    if (str == NULL || str->len <= 2)
+        return -1;
+    return str->str[1];
+}
+
+int token_getnum(string_t *str)
+{
+    int base, offs, result, neg;
+    char *p;
+
+    if (str == NULL || str->len < 2)
+        return INT_MIN;
+    /* Check for negative sign */
+    if (str->str[0] == '-')
+        neg = 1;
+    else
+        neg = 0;
+
+    /* Determine base */
+    if (str->str[0 + neg] == '0')
+    {
+        /* Hexadecimal or binary (0x0\0, 0b0\0) */
+        if (str->len >= 4 + neg)
+        {
+            if (str->str[1 + neg] == 'x')
+            {
+                base = 16;
+                offs = 2;
+            }
+            else if (str->str[1 + neg] == 'b')
+            {
+                base = 2;
+                offs = 2;
+            }
+            else if (str->str[1 + neg] >= '0' &&
+                     str->str[1 + neg] < '8')
+            {
+                base = 8;
+                offs = 1;
+            }
+            else
+                return INT_MIN;
+        }
+        else if(str->len > 2 + neg)
+        {
+            base = 8;
+            offs = 1;
+        }
+    }
+    else
+    {
+        base = 10;
+        offs = 0;
+    }
+
+    /* Set pointer to start of number proper */
+    p = str->str + offs + neg;
+
+    /* Convert number */
+    for (result = 0; *p != '\0'; ++p)
+    {
+        result *= base;
+        if ((base == 2 && *p >= '0' && *p < '2') ||
+            (base == 8 && *p >= '0' && *p < '8') ||
+            (base == 10 && *p >= '0' && *p <= '9'))
+            result += (*p - '0');
+        else if (base == 16)
+        {
+            if(*p >= '0' && *p <= '9')
+                result += (*p - '0');
+            else if(*p >= 'a' && *p <= 'f')
+                result += 10 + (*p - 'a');
+            else if(*p >= 'A' && *p <= 'F')
+                result += 10 + (*p - 'A');
+            else
+                return INT_MIN;
+        }
+        else
+            return INT_MIN;
+    }
+    return neg ? -result : result;
+}
 

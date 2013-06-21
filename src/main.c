@@ -105,7 +105,7 @@ int line_parse(instr_t *instr)
        instr->tokop1->str[2] == 'u')
     {
         ss[symind].str = instr->tokmnem->str;
-        ss[symind++].val = atoi(instr->tokop2->str);
+        ss[symind++].val = token_getnum(instr->tokop2);
     }
 
     /* OP3: RZ / HHLL */

@@ -25,6 +25,7 @@ string_t* token_getlabel(string_t *str);
 int token_islabel(string_t *str);
 int token_iscomment(string_t *str);
 int token_mnem2op(string_t *str);
+int token_getnum(string_t *str);
 
 #endif
 
