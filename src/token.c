@@ -132,7 +132,7 @@ int token_getnum(string_t *str)
         neg = 0;
 
     /* Determine base */
-    if (str->str[0 + neg] == '0')
+    if (str->str[0 + neg] == '0' && str->len > 2)
     {
         /* Hexadecimal or binary (0x0\0, 0b0\0) */
         if (str->len >= 4 + neg)
