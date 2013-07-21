@@ -24,27 +24,31 @@
 /* Error codes for the program. */
 typedef enum
 {
+    ERR_NONE = 0,
     ERR_FILE = -1,
     ERR_MALLOC = -2,
     ERR_NO_MNEMONIC = -3,
     ERR_NO_OP1 = -4,
     ERR_NO_OP2 = -5,
-    ERR_NO_OP3 = -6
+    ERR_NO_OP3 = -6,
+    ERR_LABEL_REDEF = -7,
+    ERR_NOT_REG = -8,
+    ERR_INVALID_OP = -9
 } err_t;
 
 
 /* Possible argument combinations. */
 typedef enum
 {
-    INSTR_ERR = -1,
-    INSTR_NONE = 0,
-    INSTR_IMM,
-    INSTR_IMM_IMM,
-    INSTR_REG,
-    INSTR_REG_IMM,
-    INSTR_REG_REG,
-    INSTR_REG_REG_IMM,
-    INSTR_REG_REG_REG
+    ARGS_ERR = -1,
+    ARGS_NONE = 0,
+    ARGS_I,
+    ARGS_I_I,
+    ARGS_R,
+    ARGS_R_I,
+    ARGS_R_R,
+    ARGS_R_R_I,
+    ARGS_R_R_R
 } instr_args_t;
 
 
@@ -75,16 +79,15 @@ typedef struct
  * form and compiled form. */
 typedef struct
 {
-    char *str;
-    int len;
     int ln;
     int iscomment, islabel;
 
     instr_args_t args;
     instr_type_t type;
 
+    string_t *line;
     string_t *toklabel, *tokmnem, *tokop1, *tokop2, *tokop3;
-    int op, x, y, z, hhll, n;
+    int op, op1, op2, op3;
 
     int addr;
 

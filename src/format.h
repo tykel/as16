@@ -17,16 +17,7 @@
  *   along with as16.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TOKEN_H
-#define TOKEN_H
+#include "defs.h"
 
-string_t* token_next(char **str);
-string_t* token_getlabel(string_t *str);
-int token_islabel(string_t *str);
-int token_iscomment(string_t *str);
-int token_isreg(string_t *str);
-int token_mnem2op(string_t *str);
-int token_getnum(string_t *str);
-
-#endif
+instr_args_t op_argformat[256];
 

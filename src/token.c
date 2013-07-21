@@ -66,12 +66,19 @@ string_t* token_next(char **str)
 int token_islabel(string_t *str)
 {
     int len = str->len;
-    return (str->str[len - 2] == ':');
+    return (len > 1 && str->str[len - 2] == ':');
 }
 
 int token_iscomment(string_t *str)
 {
-    return (str->str[0] == ';');
+    return (str->len > 1 && str->str[0] == ';');
+}
+
+int token_isreg(string_t *str)
+{
+    return (str->len == 3 && str->str[0] == 'r' &&
+            ((str->str[1] >= '0' && str->str[1] <= '9') ||
+             (str->str[1] >= 'a' && str->str[1] <= 'f')));
 }
 
 int token_mnem2op(string_t *str)
