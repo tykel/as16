@@ -130,7 +130,7 @@ int token_getnum(string_t *str)
     int base, offs, result, neg;
     char *p;
 
-    if (str == NULL || str->len < 2)
+    if (str == NULL || str->str == NULL || str->len < 2)
         return INT_MIN;
     /* Check for negative sign */
     if (str->str[0] == '-')

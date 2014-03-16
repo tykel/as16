@@ -24,6 +24,7 @@ instr_args_t op_argsformat[256] =
     /* 0x */
     ARGS_NONE, ARGS_NONE, ARGS_NONE, ARGS_I, ARGS_I, ARGS_R_R_I, ARGS_R_R_R,
     ARGS_R_I, ARGS_I_I, ARGS_NONE, ARGS_I, ARGS_I, ARGS_I, ARGS_R_I, ARGS_I_I,
+    ARGS_ERR,
     /* 1x */
     ARGS_I, ARGS_R_R_I, ARGS_I, ARGS_R_R_I, ARGS_I, ARGS_NONE, ARGS_R, ARGS_I,
     ARGS_R,

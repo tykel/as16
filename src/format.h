@@ -19,5 +19,5 @@
 
 #include "defs.h"
 
-instr_args_t op_argformat[256];
+instr_args_t op_argsformat[256];
 

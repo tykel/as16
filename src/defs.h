@@ -79,8 +79,9 @@ typedef struct
  * form and compiled form. */
 typedef struct
 {
+    int valid;
     int ln;
-    int iscomment, islabel;
+    int iscomment, islabel, isequ;
 
     instr_args_t args;
     instr_type_t type;
