@@ -46,6 +46,7 @@ typedef enum
     ARGS_I_I,
     ARGS_R,
     ARGS_R_I,
+    ARGS_SP_I,
     ARGS_R_R,
     ARGS_R_R_I,
     ARGS_R_R_R

@@ -117,6 +117,7 @@ void string_free(string_t *str)
 instr_args_t op_getargsformat(instr_t *instr)
 {
     instr_args_t af = ARGS_ERR;
+
     if(instr->op < 0 || instr->op > 255)
     {
         return af;
@@ -176,6 +177,16 @@ instr_args_t op_getargsformat(instr_t *instr)
            instr->tokop3 == NULL)
         {
             af = ARGS_R_I;
+        }
+        break;
+    }
+    case ARGS_SP_I:
+    {
+        if(instr->tokop1 != NULL && instr->tokop1->len > 2 &&
+           instr->tokop1->str[0] == 's' && instr->tokop1->str[1] == 'p' &&
+           instr->tokop2 != NULL)
+        {
+            af = ARGS_SP_I;
         }
         break;
     }
@@ -286,52 +297,37 @@ void op_fix(instr_t *instr)
 {
     int op = instr->op;
     /* DRW */
-    if(op == 0x05 && instr->tokop3 != NULL)
-    {
-        instr->args = ARGS_R_R_R;
-        instr->op = 0x06;
-    }
-    else if(op == 0x20 && instr->tokop1 != NULL &&
+    if(op == 0x20 && instr->tokop1 != NULL &&
             !strcmp(instr->tokop1->str, "sp"))
     {
-        instr->op = 0x21;
+        instr->op++;
+        instr->args = ARGS_SP_I;
     }
     else if(op == 0x22 && instr->tokop2 != NULL && instr->tokop2->len > 2 &&
             instr->tokop2->str[0] == 'r')
     {
+        instr->op++;
         instr->args = ARGS_R_R;
-        instr->op = 0x23;
     }
-    else if(op == 0x30 && instr->args == ARGS_R_R)
-        instr->op = 0x31;
-    else if(op == 0x41 && instr->args == ARGS_R_R_R)
-        instr->op = 0x42;
-    else if(op == 0x51 && instr->args == ARGS_R_R_R)
-        instr->op = 0x52;
-    else if(op == 0x61 && instr->args == ARGS_R_R_R)
-        instr->op = 0x62;
-    else if(op == 0x71 && instr->args == ARGS_R_R_R)
-        instr->op = 0x72;
-    else if(op == 0x81 && instr->args == ARGS_R_R_R)
-        instr->op = 0x82;
-    else if(op == 0x91 && instr->args == ARGS_R_R_R)
-        instr->op = 0x92;
-    else if(op == 0xA1 && instr->args == ARGS_R_R_R)
-        instr->op = 0xA2;
-    else if(op == 0xA4 && instr->args == ARGS_R_R_R)
-        instr->op = 0xA5;
-    else if(op == 0xA7 && instr->args == ARGS_R_R_R)
-        instr->op = 0xA8;
-    else if(op == 0xB0 && instr->args == ARGS_R_R)
-        instr->op = 0xB3;
-    else if(op == 0xB1 && instr->args == ARGS_R_R)
-        instr->op = 0xB4;
-    else if(op == 0xB2 && instr->args == ARGS_R_R)
-        instr->op = 0xB5;
-    else if(op == 0xE1 && instr->args == ARGS_R_R)
-        instr->op = 0xE2;
-    else if(op == 0xE4 && instr->args == ARGS_R_R)
-        instr->op = 0xE5;
+    else if((op == 0x05 || op == 0x30 || op == 0x41 || op == 0x51 ||
+             op == 0x61 || op == 0x71 || op == 0x81 || op == 0x91 ||
+             op == 0xA1 || op == 0xA4 || op == 0xA8) && instr->tokop3 != NULL &&
+            instr->tokop3->len > 2 && instr->tokop3->str[0] == 'r')
+    {
+        instr->op++;
+        instr->args = ARGS_R_R_R;
+    }
+    else if((op == 0xB0 || op == 0xB1 || op == 0xB2) && instr->args == ARGS_R_R)
+    {
+        instr->op += 3;
+        instr->args = ARGS_R_R;
+    }
+    else if((op == 0xE1 || op == 0xE4) && instr->tokop2 != NULL &&
+            instr->tokop2->len > 2 && instr->tokop2->str[0] == 'r')
+    {
+        instr->op++;
+        instr->args = ARGS_R_R;
+    }
 }
 
 /*
