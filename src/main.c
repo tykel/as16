@@ -337,25 +337,30 @@ void op_fix(instr_t *instr)
 int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns)
 {
     int i, s, ret;
+    int cur;
     ret = 0;
     /* First loop: replace all labels with their offset values. */
-    for(i = 0; i < ni; ++i)
+    for(i = 0, cur = 0; i < ni; ++i)
     {
+        instr_t *instr = &instrs[i];
         for(s = 0; s < ns; ++s)
         {
-            instr_t *instr = &instrs[i];
-            if(instr->valid && instr->islabel && instr->toklabel != NULL &&
+            if(instr->valid && instr->toklabel != NULL &&
                strcmp(instr->toklabel->str, syms[s].str) == 0)
             {
-                /* FIXME: Temporary placeholder */
                 if(syms[s].val != -1)
                 {
                     log_error("", instr->ln, ERR_LABEL_REDEF, syms[s].str);
                     ret = -1;
                 }
-                syms[s].val = 0xffff;
+                syms[s].val = cur;
             }
         }
+        if(instr->isdata)
+            cur += instr->data_size;
+        else if(instr->valid && !instr->iscomment && !instr->islabel &&
+                !instr->isequ)
+            cur += 4;
     }
     /* Second loop: replace all references to symbols with values. */
     for(i = 0; i < ni; ++i)
@@ -415,6 +420,7 @@ int instr_parse(instr_t *instr)
 {
     string_t *toktemp;
     char *sp;
+    int i;
    
     if(!instr->valid)
         return -1;
@@ -447,7 +453,7 @@ int instr_parse(instr_t *instr)
             return 0;
         }
         toktemp = token_next(&sp);
-        if(token_islabel(toktemp))
+        if(token_iscomment(toktemp))
         {
             instr->islabel = 1;
             return 0;
@@ -457,37 +463,32 @@ int instr_parse(instr_t *instr)
     else
         instr->tokmnem = toktemp;
 
-    /* OP1: RX / N / HHLL */
-    if(*sp == '\0')
-        return 0;
-    toktemp = token_next(&sp);
-    if(token_iscomment(toktemp))
-	    return 0;
-    instr->tokop1 = toktemp;
-
-    /* OP2: RY / N / HHLL */
-    if(*sp == '\0')
-        return 0;
-    toktemp = token_next(&sp);
-    if(token_iscomment(toktemp))
-        return 0;
-    instr->tokop2 = toktemp;
-    if(instr->tokop1->str[0] == 'e' &&
-       instr->tokop1->str[1] == 'q' &&
-       instr->tokop1->str[2] == 'u')
+    for(i = 0; *sp != '\0' && i < MAX_OPS; ++i)
     {
-        syms[symind].str = instr->tokmnem->str;
-        syms[symind++].val = token_getnum(instr->tokop2);
-        instr->isequ = 1;
+        toktemp = token_next(&sp);
+        if(token_iscomment(toktemp))
+            return 0;
+        
+        instr->tokops[i] = toktemp;
+    
+        if(i == 0)
+            instr->tokop1 = toktemp;
+        else if(i == 1)
+        {
+            instr->tokop2 = toktemp;
+            if((instr->tokop1->str[0] == 'e' || instr->tokop1->str[0] == 'E') &&
+               (instr->tokop1->str[1] == 'q' || instr->tokop1->str[1] == 'Q') &&
+               (instr->tokop1->str[2] == 'u' || instr->tokop1->str[2] == 'U'))
+            {
+                syms[symind].str = instr->tokmnem->str;
+                syms[symind++].val = token_getnum(instr->tokop2);
+                instr->isequ = 1;
+            }
+        }
+        else if(i == 2)
+            instr->tokop3 = toktemp;
     }
-
-    /* OP3: RZ / HHLL */
-    if(*sp == '\0')
-        return 0;
-    toktemp = token_next(&sp);
-    if(token_iscomment(toktemp))
-        return 0;
-    instr->tokop3 = toktemp;
+    instr->num_ops = i;
 
     return 0;
 }
@@ -512,6 +513,51 @@ int file_read(const char *fn, char **buf)
     fclose(file);
 
     return len;
+}
+
+void expand_data(instr_t *instrs, int ni)
+{
+    int i;
+
+    for(i = 0; i < ni; i++)
+    {
+        instr_t *it = &instrs[i];
+        if(!it->valid || it->iscomment || it->islabel || it->isequ)
+            continue;
+        
+        if(!strcmp(it->tokmnem->str, "db"))
+        {
+            int o;
+            char *data;
+            int size = it->num_ops;
+            it->data = malloc(size);
+            it->data_size = size;
+            data = (char *) it->data;
+            for(o = 0; o < it->num_ops; o++)
+            {
+                int n = token_getnum(it->tokops[o]);
+                data[o] = (char) n;
+            }
+            
+            it->isdata = 1;
+        }
+        else if(!strcmp(it->tokmnem->str, "dw"))
+        {
+            int o;
+            short *data;
+            int size = it->num_ops * 2;
+            it->data = malloc(size);
+            it->data_size = size;
+            data = (short *) it->data;
+            for(o = 0; o < it->num_ops; o++)
+            {
+                int n = token_getnum(it->tokops[o]);
+                data[o] = (short) n;
+            }
+
+            it->isdata = 1;
+        }
+    }
 }
 
 int main(int argc, char *argv[])
@@ -561,6 +607,7 @@ int main(int argc, char *argv[])
             fgets(line, 200, file);
         }
         
+        expand_data(instrs, ln);
         syms_replace(instrs, ln, syms, symind);
 
         printf("Symbol table\n------------\n");
@@ -569,6 +616,7 @@ int main(int argc, char *argv[])
             printf("%02d: [ '%s' : %d / 0x%x ]\n",
                    i, syms[i].str, (short)syms[i].val, (uint16_t)syms[i].val);
         }
+
         printf("\nInstruction table\n-----------------\n");
         for(i = 0; i < ln; ++i)
         {
@@ -581,6 +629,8 @@ int main(int argc, char *argv[])
                 printf("[label            ]");
             else if(instrs[i].isequ)
                 printf("[equ              ]");
+            else if(instrs[i].isdata)
+                printf("[data: %3d bytes  ]", instrs[i].data_size);
             else
                 printf("%d [%02x %4x %4x %4x]",
                        instrs[i].args,

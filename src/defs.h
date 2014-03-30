@@ -20,6 +20,7 @@
 #ifndef DEFS_H
 #define DEFS_H
 
+#define MAX_OPS 256
 
 /* Error codes for the program. */
 typedef enum
@@ -82,14 +83,15 @@ typedef struct
 {
     int valid;
     int ln;
-    int iscomment, islabel, isequ;
+    int iscomment, islabel, isequ, isdata;
 
     instr_args_t args;
     instr_type_t type;
 
     string_t *line;
-    string_t *toklabel, *tokmnem, *tokop1, *tokop2, *tokop3;
-    int op, op1, op2, op3;
+    string_t *toklabel, *tokmnem, *tokops[MAX_OPS], *tokop1, *tokop2, *tokop3;
+    int op, op1, op2, op3, num_ops, data_size;
+    void *data;
 
     int addr;
 
