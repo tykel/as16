@@ -681,92 +681,123 @@ void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
     fclose(file);
 }
 
-int main(int argc, char *argv[])
+int read_file(const char *fn, int base)
 {
-    FILE *file = NULL;
+    FILE *file;
     char line[200];
-    int ln = 0, len = 0, i, verbose = 0;
+    int ln, len;
     
-    /* TODO: Proper argument parsing */
-    if(argc > 1)
+    ln = 0;
+    file = fopen(fn, "r");
+    if(!file)
     {
-        file = fopen(argv[1], "r");
-        fgets(line, 200, file);
+        fprintf(stderr, "error: could not open %s for reading\n", fn);
+        return ln;
+    }
 
-        while(line != NULL && !feof(file))
+    fgets(line, 200, file);
+    
+    while(line != NULL && !feof(file))
+    {
+        int c;
+
+        ++ln;
+        len = strlen(line);
+        line[len - 1] = '\0';
+        instrs[ln + base - 1].valid = 0;
+        for(c = 0; c < len; c++)
         {
-            int c;
-
-            ++ln;
-            len = strlen(line);
-            line[len - 1] = '\0';
-            instrs[ln - 1].valid = 0;
-            for(c = 0; c < len; c++)
+            if(line[c] != ' ' && line[c] != '\t' && line[c] != '\0' )
             {
-                if(line[c] != ' ' && line[c] != '\t' && line[c] != '\0' )
-                {
-                    instrs[ln - 1].valid = 1;
-                    break;
-                }
+                instrs[ln + base - 1].valid = 1;
+                break;
             }
-            
-            instrs[ln - 1].line = string_alloc(line, len);
-            instrs[ln - 1].ln = ln;
-            if(instrs[ln - 1].valid)
-            {
-                instr_parse(&instrs[ln - 1]);
-                /* Only consider lines with "proper" instructions. */
-                if(!instrs[ln - 1].islabel && !instrs[ln - 1].iscomment &&
-                    !instr_isequ(&instrs[ln - 1]) && instrs[ln - 1].tokmnem != 0)
-                {
-                    instrs[ln - 1].op = token_mnem2op(instrs[ln - 1].tokmnem);
-                    instrs[ln - 1].args = op_getargsformat(&instrs[ln - 1]);
-                    op_fix(&instrs[ln - 1]);
-                    op_getops(&instrs[ln - 1]);
-                    op_gettype(&instrs[ln - 1]);
-                }
-            }
-            fgets(line, 200, file);
         }
         
-        expand_data(instrs, ln);
-        syms_replace(instrs, ln, syms, symind);
-
-        if(1 || verbose)
+        instrs[ln + base - 1].line = string_alloc(line, len);
+        instrs[ln + base - 1].ln = ln;
+        if(instrs[ln + base - 1].valid)
         {
-            printf("Symbol table\n------------\n");
-            for(i = 0; i < symind; ++i)
+            instr_parse(&instrs[ln + base - 1]);
+            if(instrs[ln + base - 1].tokmnem != NULL &&
+               !strcmp(instrs[ln + base - 1].tokmnem->str, "include"))
+                base += read_file(instrs[ln + base - 1].tokop1->str, ln + base);
+            else
             {
-                printf("%02d: [ '%s' : %d / 0x%x ]\n",
-                       i, syms[i].str, (short)syms[i].val, (uint16_t)syms[i].val);
-            }
-
-            printf("\nInstruction table\n-----------------\n");
-            for(i = 0; i < ln; ++i)
-            {
-                printf("%02d: ", instrs[i].ln);
-                if(!instrs[i].valid)
-                    printf("  [invalid          ]");
-                else if(instrs[i].iscomment)
-                    printf("  [comment          ]");
-                else if(instrs[i].islabel)
-                    printf("  [label            ]");
-                else if(instrs[i].isequ)
-                    printf("  [equ              ]");
-                else if(instrs[i].isdata)
-                    printf("  [data: %3d bytes  ]", instrs[i].data_size);
-                else
-                    printf("%d [%02x %4x %4x %4x]",
-                           instrs[i].args,
-                           (uint16_t)instrs[i].op,
-                           (uint16_t)instrs[i].op1,
-                           (uint16_t)instrs[i].op2,
-                           (uint16_t)instrs[i].op3);
-                
-                printf(" %s\n", instrs[i].line->str);
+                /* Only consider lines with "proper" instructions. */
+                if(!instrs[ln + base - 1].islabel && !instrs[ln + base - 1].iscomment &&
+                    !instr_isequ(&instrs[ln + base - 1]) && instrs[ln + base - 1].tokmnem != 0)
+                {
+                    instrs[ln + base - 1].op = token_mnem2op(instrs[ln + base - 1].tokmnem);
+                    instrs[ln + base - 1].args = op_getargsformat(&instrs[ln + base - 1]);
+                    op_fix(&instrs[ln + base - 1]);
+                    op_getops(&instrs[ln + base - 1]);
+                    op_gettype(&instrs[ln + base - 1]);
+                }
             }
         }
+        fgets(line, 200, file);
+    }
 
+    return ln;
+}
+
+int main(int argc, char *argv[])
+{
+    int verbose, ln, i;    
+
+    if(argc > 1)
+    {
+        for(i = 1; i < argc; i++)
+        {
+            if(argv[i][0] == '-')
+            {
+                if(!strcmp(argv[i], "-v"))
+                    verbose = 1;
+            }
+        }
+        for(i = 1, ln = 0; i < argc; i++)
+            if(argv[i][0] != '-')
+                ln += read_file(argv[i], ln);
+    }
+
+    expand_data(instrs, ln);
+    syms_replace(instrs, ln, syms, symind);
+
+    if(verbose)
+    {
+        printf("Symbol table\n------------\n");
+        for(i = 0; i < symind; ++i)
+        {
+            printf("%02d: [ '%s' : %d / 0x%x ]\n",
+                   i, syms[i].str, (short)syms[i].val, (uint16_t)syms[i].val);
+        }
+
+        printf("\nInstruction table\n-----------------\n");
+        for(i = 0; i < ln; ++i)
+        {
+            printf("%02d: ", instrs[i].ln);
+            if(!instrs[i].valid)
+                printf("  [invalid          ]");
+            else if(instrs[i].iscomment)
+                printf("  [comment          ]");
+            else if(instrs[i].islabel)
+                printf("  [label            ]");
+            else if(instrs[i].isequ)
+                printf("  [equ              ]");
+            else if(instrs[i].isdata)
+                printf("  [data: %3d bytes  ]", instrs[i].data_size);
+            else
+                printf("%d [%02x %4x %4x %4x]",
+                       instrs[i].args,
+                       (uint16_t)instrs[i].op,
+                       (uint16_t)instrs[i].op1,
+                       (uint16_t)instrs[i].op2,
+                       (uint16_t)instrs[i].op3);
+            
+            printf(" %s\n", instrs[i].line->str);
+        }
+        
         output_file("output.c16", instrs, ln, syms, symind);
     }
         
