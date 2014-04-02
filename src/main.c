@@ -240,7 +240,6 @@ instr_args_t op_getargsformat(instr_t *instr)
 /* Determine the instruction's operand values. */
 void op_getops(instr_t *instr)
 {
-    string_t copy;
     instr_args_t at = instr->args;
     if(at == ARGS_NONE || at == ARGS_ERR)
         return;
@@ -251,14 +250,10 @@ void op_getops(instr_t *instr)
     else if(at == ARGS_R || at == ARGS_R_I || at == ARGS_R_R ||
             at == ARGS_R_R_I || at == ARGS_R_R_R)
     {
-        copy = *instr->tokop1;
-        if(copy.len > 1)
-        {
-            copy.str++;
-            instr->op1 = token_getnum(&copy);
-        }
+        if(instr->tokop1->len == 3)
+            instr->op1 = token_getreg(instr->tokop1);
         else
-            printf("error: %s is not a register\n", copy.str);
+            printf("error: %s is not a register\n", instr->tokop1->str);
     }
 
     /* Second argument. */
@@ -266,29 +261,21 @@ void op_getops(instr_t *instr)
         instr->op2 = token_getnum(instr->tokop2);
     else if(at == ARGS_R_R || at == ARGS_R_R_I || at == ARGS_R_R_R)
     {
-        copy = *instr->tokop2;
-        if(copy.len > 1)
-        {
-            copy.str++;
-            instr->op2 = token_getnum(&copy);
-        }
+        if(instr->tokop2->len == 3)
+            instr->op2 = token_getreg(instr->tokop2);
         else
-            printf("error: %s is not a register\n", copy.str);
+            printf("error: %s is not a register\n", instr->tokop2->str);
     }
     
     /* Third argument. */
     if(at == ARGS_R_R_I)
-        instr->op2 = token_getnum(instr->tokop3);
+        instr->op3 = token_getnum(instr->tokop3);
     else if(at == ARGS_R_R_R)
     {
-        copy = *instr->tokop3;
-        if(instr->tokop3->len > 1)
-        {
-            copy.str++;
-            instr->op3 = token_getnum(&copy);
-        }
+        if(instr->tokop3->len == 3)
+            instr->op3 = token_getreg(instr->tokop3);
         else
-            printf("error: %s is not a register\n", copy.str);
+            printf("error: %s is not a register\n", instr->tokop3->str);
     }
 }
 
@@ -330,6 +317,53 @@ void op_fix(instr_t *instr)
     }
 }
 
+void op_gettype(instr_t *instr)
+{
+    switch(instr->args)
+    {
+    case ARGS_NONE:
+        instr->type = INSTR_OP000000;
+        break;
+    case ARGS_I:
+        if(instr->op1 < (1 << 4))
+            instr->type = INSTR_OP000N00;
+        else
+            instr->type = INSTR_OP00LLHH;
+        break;
+    case ARGS_I_I:
+        if(instr->op == 0x08)
+            instr->type = INSTR_OP00000N;
+        else if(instr->op == 0x0E)
+            instr->type = INSTR_OPBBLLHH;
+        else
+            instr->type = INSTR_OPYXLLHH;
+        break;
+    case ARGS_R:
+        instr->type = INSTR_OP0X0000;
+        break;
+    case ARGS_R_I:
+        if((instr->op & 0xF0) == 0xB0)
+            instr->type = INSTR_OP0X0N00;
+        else
+            instr->type = INSTR_OP0XLLHH;
+        break;
+    case ARGS_SP_I:
+        instr->type = INSTR_OP0XLLHH;
+        break;
+    case ARGS_R_R:
+        instr->type = INSTR_OPYX0000;
+        break;
+    case ARGS_R_R_I:
+        instr->type = INSTR_OPYXLLHH;
+        break;
+    case ARGS_R_R_R:
+        instr->type = INSTR_OPYX0Z00;
+        break;
+    default:
+        break;
+    }
+}
+
 /*
  * Replace all (unresolved) symbols with their values.
  * In the case of labels, if unassigned give it its initial value.
@@ -365,13 +399,13 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns)
     /* Second loop: replace all references to symbols with values. */
     for(i = 0; i < ni; ++i)
     {
+        instr_t *instr = &instrs[i];
+        if(!instr->valid || instr->islabel || instr->iscomment)
+        {
+            continue;
+        }
         for(s = 0; s < ns; ++s)
         {
-            instr_t *instr = &instrs[i];
-            if(!instr->valid || instr->islabel || instr->iscomment)
-            {
-                continue;
-            }
             if(instr->tokop1 && strcmp(instr->tokop1->str, syms[s].str) == 0)
             {
                 instr->op1 = syms[s].val;
@@ -420,7 +454,7 @@ int instr_parse(instr_t *instr)
 {
     string_t *toktemp;
     char *sp;
-    int i;
+    int i, jc;
    
     if(!instr->valid)
         return -1;
@@ -463,7 +497,22 @@ int instr_parse(instr_t *instr)
     else
         instr->tokmnem = toktemp;
 
-    for(i = 0; *sp != '\0' && i < MAX_OPS; ++i)
+    /* Make first operand the condition code for jumps */
+    jc = 0;
+    if(instr->tokmnem->str[0] == 'j' || instr->tokmnem->str[0] == 'c')
+    {
+        for(i = 0; i < 16; ++i)
+        {
+            if(!strcmp(str_cond[i], instr->tokmnem->str + 1))
+            {
+                char temp[3] = { 'r', 0, 0 };
+                temp[1] = i + (i < 10 ? '0' : 'a' - 10);
+                instr->tokop1 = string_alloc(temp, 3);
+                jc = 1;
+            }
+        }
+    }
+    for(i = jc; *sp != '\0' && i < MAX_OPS; ++i)
     {
         toktemp = token_next(&sp);
         if(token_iscomment(toktemp))
@@ -560,11 +609,83 @@ void expand_data(instr_t *instrs, int ni)
     }
 }
 
+void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
+     int ns)
+{
+    int i;
+    FILE *file = NULL;
+
+    if((file = fopen(fn, "wb")) == NULL)
+    {
+        fprintf(stderr, "error: could not open %s for writing\n", fn);
+        exit(-1);
+    }
+    
+    for(i = 0; i < ni; ++i)
+    {
+        instr_t *it = &instrs[i];
+        if(!it->valid || it->iscomment || it->islabel || it->isequ)
+            continue;
+        if(it->isdata)
+        {
+            fwrite(it->data, 1, it->data_size, file);
+        }
+        else
+        {
+            unsigned char idw[4] = {0};
+            idw[0] = it->op;
+            switch(it->type)
+            {
+            case INSTR_OP000N00:
+                idw[2] = (unsigned char) it->op1;
+                break;
+            case INSTR_OP00000N:
+                idw[3] = (unsigned char) ((it->op1 << 1) | it->op2);
+                break;
+            case INSTR_OP00LLHH:
+                *(short *)&idw[2] = it->op1;
+                break;
+            case INSTR_OP0X0000:
+                idw[1] = (unsigned char) it->op1;
+                break;
+            case INSTR_OP0X0N00:
+                idw[1] = (unsigned char) it->op1;
+                idw[2] = (unsigned char) it->op2;
+                break;
+            case INSTR_OP0XLLHH:
+                idw[1] = (unsigned char) it->op1;
+                *(short *)&idw[2] = it->op2;
+                break;
+            case INSTR_OPYX0000:
+                idw[1] = (unsigned char) (it->op1 | (it->op2 << 4));
+                break;
+            case INSTR_OPYXLLHH:
+                idw[1] = (unsigned char) (it->op1 | (it->op2 << 4));
+                *(short *)&idw[2] = it->op3;
+                break;
+            case INSTR_OPBBLLHH:
+                idw[1] = (unsigned char) it->op1;
+                *(short *)&idw[2] = it->op2;
+                break;
+            case INSTR_OPYX0Z00:
+                idw[1] = (unsigned char) (it->op1 | (it->op2 << 4));
+                idw[2] = it->op3;
+                break;
+            case INSTR_OP000000:
+            default:
+                break;
+            }
+            fwrite(idw, 1, 4, file);
+        }
+    }
+    fclose(file);
+}
+
 int main(int argc, char *argv[])
 {
     FILE *file = NULL;
     char line[200];
-    int ln = 0, len = 0, i;
+    int ln = 0, len = 0, i, verbose = 0;
     
     /* TODO: Proper argument parsing */
     if(argc > 1)
@@ -602,6 +723,7 @@ int main(int argc, char *argv[])
                     instrs[ln - 1].args = op_getargsformat(&instrs[ln - 1]);
                     op_fix(&instrs[ln - 1]);
                     op_getops(&instrs[ln - 1]);
+                    op_gettype(&instrs[ln - 1]);
                 }
             }
             fgets(line, 200, file);
@@ -610,37 +732,42 @@ int main(int argc, char *argv[])
         expand_data(instrs, ln);
         syms_replace(instrs, ln, syms, symind);
 
-        printf("Symbol table\n------------\n");
-        for(i = 0; i < symind; ++i)
+        if(1 || verbose)
         {
-            printf("%02d: [ '%s' : %d / 0x%x ]\n",
-                   i, syms[i].str, (short)syms[i].val, (uint16_t)syms[i].val);
+            printf("Symbol table\n------------\n");
+            for(i = 0; i < symind; ++i)
+            {
+                printf("%02d: [ '%s' : %d / 0x%x ]\n",
+                       i, syms[i].str, (short)syms[i].val, (uint16_t)syms[i].val);
+            }
+
+            printf("\nInstruction table\n-----------------\n");
+            for(i = 0; i < ln; ++i)
+            {
+                printf("%02d: ", instrs[i].ln);
+                if(!instrs[i].valid)
+                    printf("  [invalid          ]");
+                else if(instrs[i].iscomment)
+                    printf("  [comment          ]");
+                else if(instrs[i].islabel)
+                    printf("  [label            ]");
+                else if(instrs[i].isequ)
+                    printf("  [equ              ]");
+                else if(instrs[i].isdata)
+                    printf("  [data: %3d bytes  ]", instrs[i].data_size);
+                else
+                    printf("%d [%02x %4x %4x %4x]",
+                           instrs[i].args,
+                           (uint16_t)instrs[i].op,
+                           (uint16_t)instrs[i].op1,
+                           (uint16_t)instrs[i].op2,
+                           (uint16_t)instrs[i].op3);
+                
+                printf(" %s\n", instrs[i].line->str);
+            }
         }
 
-        printf("\nInstruction table\n-----------------\n");
-        for(i = 0; i < ln; ++i)
-        {
-            printf("%02d: ", instrs[i].ln);
-            if(!instrs[i].valid)
-                printf("[invalid          ]");
-            else if(instrs[i].iscomment)
-                printf("[comment          ]");
-            else if(instrs[i].islabel)
-                printf("[label            ]");
-            else if(instrs[i].isequ)
-                printf("[equ              ]");
-            else if(instrs[i].isdata)
-                printf("[data: %3d bytes  ]", instrs[i].data_size);
-            else
-                printf("%d [%02x %4x %4x %4x]",
-                       instrs[i].args,
-                       (uint16_t)instrs[i].op,
-                       (uint16_t)instrs[i].op1,
-                       (uint16_t)instrs[i].op2,
-                       (uint16_t)instrs[i].op3);
-            
-            printf(" %s\n", instrs[i].line->str);
-        }
+        output_file("output.c16", instrs, ln, syms, symind);
     }
         
     exit(0);

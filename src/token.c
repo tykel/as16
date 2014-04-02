@@ -203,3 +203,16 @@ int token_getnum(string_t *str)
     return neg ? -result : result;
 }
 
+int token_getreg(string_t *str)
+{
+    int result = 0;
+    if(str->len == 3)
+    {
+        char index = str->str[1];
+        if(index >= '0' && index <= '9')
+            result = index - '0';
+        else if(index >= 'a' && index <= 'f')
+            result = index - 'a' + 10;
+    }
+    return result;
+}
