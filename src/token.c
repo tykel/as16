@@ -43,7 +43,7 @@ string_t* token_next(char **str)
         ++p;
     }
     /* Determine token length */
-    while (*p != ' ' && *p != '\t' && *p != '\0' && *p != '\n' && *p != ',')
+    while (*p != ' ' && *p != '\t' && *p != '\0' && *p != '\n' && *p != ',' && *p != '\r')
     {
         ++len;
         ++p;
@@ -61,6 +61,17 @@ string_t* token_next(char **str)
         ++*str;
 
     return token;
+}
+
+int token_iswhitespace(string_t *str)
+{
+    char *sp = str->str;
+    while(*sp != '\0')
+        if(*sp != ' ' && *sp != '\n' && *sp != '\t' && *sp != '\r')
+            return 0;
+        else
+            ++sp;
+    return 1;
 }
 
 int token_islabel(string_t *str)
@@ -93,7 +104,8 @@ int token_mnem2op(string_t *str)
         {
             for (c = 0; c < 16; ++c)
             {
-                if (strcmp(str->str + 1, str_cond[c]) == 0)
+                if (!strcmp(str->str + 1, str_cond[c]) ||
+                    !strcmp(str->str + 1, str_cond_alt[c]))
                     return (str->str[i] == 'j' ? 0x12 : 0x17);
             }
         }

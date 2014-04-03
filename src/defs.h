@@ -22,6 +22,9 @@
 
 #define MAX_OPS 256
 
+#define DATA_BIN 1
+#define DATA_STR 2
+
 /* Error codes for the program. */
 typedef enum
 {
@@ -107,6 +110,18 @@ typedef struct
     int val;
     int islabel;
 } symbol_t;
+
+/* Linked list for tracking binary imports in a file. */
+struct import;
+typedef struct import
+{
+    char *fn;
+    int start;
+    int len;
+    char *label;
+
+    struct import *next;
+} import_t;
 
 extern const instr_args_t op_args[256];
 extern const instr_type_t op_types[256];

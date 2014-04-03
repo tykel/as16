@@ -32,6 +32,7 @@ typedef unsigned short uint16_t;
 
 #define MAX_LINES 10000
 
+static import_t *imports;
 static instr_t instrs[MAX_LINES];
 static symbol_t syms[MAX_LINES];
 static int symind;
@@ -290,13 +291,13 @@ void op_fix(instr_t *instr)
         instr->op++;
         instr->args = ARGS_SP_I;
     }
-    else if(op == 0x22 && instr->tokop2 != NULL && instr->tokop2->len > 2 &&
-            instr->tokop2->str[0] == 'r')
+    else if((op == 0x22 || op == 0x30) && instr->tokop2 != NULL &&
+            instr->tokop2->len > 2 && instr->tokop2->str[0] == 'r')
     {
         instr->op++;
         instr->args = ARGS_R_R;
     }
-    else if((op == 0x05 || op == 0x30 || op == 0x41 || op == 0x51 ||
+    else if((op == 0x05 || op == 0x41 || op == 0x51 ||
              op == 0x61 || op == 0x71 || op == 0x81 || op == 0x91 ||
              op == 0xA1 || op == 0xA4 || op == 0xA8) && instr->tokop3 != NULL &&
             instr->tokop3->len > 2 && instr->tokop3->str[0] == 'r')
@@ -325,7 +326,7 @@ void op_gettype(instr_t *instr)
         instr->type = INSTR_OP000000;
         break;
     case ARGS_I:
-        if(instr->op1 < (1 << 4))
+        if(instr->op1 == 0x03)
             instr->type = INSTR_OP000N00;
         else
             instr->type = INSTR_OP00LLHH;
@@ -368,11 +369,13 @@ void op_gettype(instr_t *instr)
  * Replace all (unresolved) symbols with their values.
  * In the case of labels, if unassigned give it its initial value.
  */
-int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns)
+int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns, import_t *imports)
 {
     int i, s, ret;
     int cur;
+    import_t *ipt = imports;
     ret = 0;
+
     /* First loop: replace all labels with their offset values. */
     for(i = 0, cur = 0; i < ni; ++i)
     {
@@ -396,7 +399,23 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns)
                 !instr->isequ)
             cur += 4;
     }
-    /* Second loop: replace all references to symbols with values. */
+
+    /* Second loop: put values for import label offsets. */
+    while(ipt != NULL)
+    {
+        for(s = 0; s < ns; s++)
+        {
+            if(!strcmp(syms[s].str, ipt->label))
+            {
+                syms[s].val = cur;
+                cur += ipt->len;
+                break;
+            }
+        }
+        ipt = ipt->next;
+    }
+
+    /* Third loop: replace all references to symbols with values. */
     for(i = 0; i < ni; ++i)
     {
         instr_t *instr = &instrs[i];
@@ -437,6 +456,7 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns)
             }
         }
     }
+
     return ret;
 }
 
@@ -487,7 +507,7 @@ int instr_parse(instr_t *instr)
             return 0;
         }
         toktemp = token_next(&sp);
-        if(token_iscomment(toktemp))
+        if(token_iscomment(toktemp) || token_iswhitespace(toktemp))
         {
             instr->islabel = 1;
             return 0;
@@ -503,7 +523,8 @@ int instr_parse(instr_t *instr)
     {
         for(i = 0; i < 16; ++i)
         {
-            if(!strcmp(str_cond[i], instr->tokmnem->str + 1))
+            if(!strcmp(str_cond[i], instr->tokmnem->str + 1) ||
+               !strcmp(str_cond_alt[i], instr->tokmnem->str + 1))
             {
                 char temp[3] = { 'r', 0, 0 };
                 temp[1] = i + (i < 10 ? '0' : 'a' - 10);
@@ -576,19 +597,34 @@ void expand_data(instr_t *instrs, int ni)
         
         if(!strcmp(it->tokmnem->str, "db"))
         {
-            int o;
-            char *data;
-            int size = it->num_ops;
-            it->data = malloc(size);
-            it->data_size = size;
-            data = (char *) it->data;
-            for(o = 0; o < it->num_ops; o++)
+            if(it->tokop1->str[0] == '"')
             {
-                int n = token_getnum(it->tokops[o]);
-                data[o] = (char) n;
+                char *string, *end;
+                int size;
+                string = strchr(it->line->str, '"');
+                end = strchr(string + 1, '"');
+                size = end - string - 1;
+                it->data = calloc(size, 1);
+                it->data_size = size;
+                memcpy(it->data, string + 1, size);
+                it->isdata = DATA_STR;
             }
-            
-            it->isdata = 1;
+            else
+            {
+                int o;
+                char *data;
+                int size = it->num_ops;
+                it->data = malloc(size);
+                it->data_size = size;
+                data = (char *) it->data;
+                for(o = 0; o < it->num_ops; o++)
+                {
+                    int n = token_getnum(it->tokops[o]);
+                    data[o] = (char) n;
+                }
+                
+                it->isdata = DATA_BIN;
+            }
         }
         else if(!strcmp(it->tokmnem->str, "dw"))
         {
@@ -610,9 +646,10 @@ void expand_data(instr_t *instrs, int ni)
 }
 
 void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
-     int ns)
+     int ns, import_t *imports)
 {
     int i;
+    import_t *ipt;
     FILE *file = NULL;
 
     if((file = fopen(fn, "wb")) == NULL)
@@ -678,13 +715,40 @@ void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
             fwrite(idw, 1, 4, file);
         }
     }
+
+    ipt = imports;
+    while(ipt != NULL)
+    {
+        int rlen;
+        unsigned char *buf;
+        FILE *ifile = NULL;
+        
+        ifile = fopen(ipt->fn, "rb");
+        if(ifile == NULL)
+        {
+            fprintf(stderr, "error: could not import %s\n", ipt->fn);
+            continue;
+        }
+        buf = malloc(ipt->len);
+        if(fseek(ifile, ipt->start, SEEK_SET))
+            fprintf(stderr, "warning: invalid start position %d in %s\n",
+                    ipt->start, ipt->fn);
+        if((rlen = fread(buf, 1, ipt->len, ifile)) != ipt->len)
+            fprintf(stderr, "warning: read %d bytes from %s (requested %d)\n",
+                    rlen, ipt->fn, ipt->len);
+        fwrite(buf, 1, rlen, file);
+        fclose(ifile);
+
+        ipt = ipt->next;
+    }
+
     fclose(file);
 }
 
-int read_file(const char *fn, int base)
+int read_file(const char *fn, int base, import_t **imports)
 {
     FILE *file;
-    char line[200];
+    char line[200] = {0};
     int ln, len;
     
     ln = 0;
@@ -707,7 +771,8 @@ int read_file(const char *fn, int base)
         instrs[ln + base - 1].valid = 0;
         for(c = 0; c < len; c++)
         {
-            if(line[c] != ' ' && line[c] != '\t' && line[c] != '\0' )
+            if(line[c] != ' ' && line[c] != '\t' && line[c] != '\0' &&
+               line[c] != '\r' && line[c] != '\n')
             {
                 instrs[ln + base - 1].valid = 1;
                 break;
@@ -721,7 +786,31 @@ int read_file(const char *fn, int base)
             instr_parse(&instrs[ln + base - 1]);
             if(instrs[ln + base - 1].tokmnem != NULL &&
                !strcmp(instrs[ln + base - 1].tokmnem->str, "include"))
-                base += read_file(instrs[ln + base - 1].tokop1->str, ln + base);
+            {
+                base += read_file(instrs[ln + base - 1].tokop1->str, ln + base, imports);
+                instrs[ln + base - 1].valid = 0;
+            }
+            else if(instrs[ln + base - 1].tokmnem != NULL &&
+                    !strcmp(instrs[ln + base - 1].tokmnem->str, "importbin"))
+            {
+                import_t *ipt = *imports;
+                while(*imports != NULL)
+                    *imports = (*imports)->next;
+                *imports = malloc(sizeof(import_t));
+                (*imports)->fn = instrs[ln + base - 1].tokop1->str;
+                (*imports)->start = token_getnum(instrs[ln + base - 1].tokop2);
+                (*imports)->len = token_getnum(instrs[ln + base - 1].tokop3);
+                (*imports)->label = instrs[ln + base - 1].tokops[3]->str;
+                (*imports)->next = NULL;
+               
+                syms[symind].str = (*imports)->label;
+                syms[symind].val = -1;
+                syms[symind++].islabel = 1;
+
+                if(ipt != NULL)
+                    *imports = ipt;
+                instrs[ln + base - 1].valid = 0;
+            }
             else
             {
                 /* Only consider lines with "proper" instructions. */
@@ -758,11 +847,11 @@ int main(int argc, char *argv[])
         }
         for(i = 1, ln = 0; i < argc; i++)
             if(argv[i][0] != '-')
-                ln += read_file(argv[i], ln);
+                ln += read_file(argv[i], ln, &imports);
     }
 
     expand_data(instrs, ln);
-    syms_replace(instrs, ln, syms, symind);
+    syms_replace(instrs, ln, syms, symind, imports);
 
     if(verbose)
     {
@@ -797,9 +886,8 @@ int main(int argc, char *argv[])
             
             printf(" %s\n", instrs[i].line->str);
         }
-        
-        output_file("output.c16", instrs, ln, syms, symind);
     }
+    output_file("output.c16", instrs, ln, syms, symind, imports);
         
     exit(0);
 }

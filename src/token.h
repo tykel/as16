@@ -28,6 +28,7 @@ int token_isreg(string_t *str);
 int token_mnem2op(string_t *str);
 int token_getnum(string_t *str);
 int token_getreg(string_t *str);
+int token_iswhitespace(string_t *str);
 
 #endif
 

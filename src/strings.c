@@ -79,7 +79,6 @@ const char* const str_cond[16] =
 
 const char* const str_cond_alt[16] = 
 {
-    "nc", "ae",
-    "c", "b"
+    "z","nz","n","nn","p","o","no","a","nc","c","be","g","ge","l","le","*"
 };
 
