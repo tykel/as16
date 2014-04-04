@@ -536,8 +536,8 @@ int instr_parse(instr_t *instr)
     for(i = jc; *sp != '\0' && i < MAX_OPS; ++i)
     {
         toktemp = token_next(&sp);
-        if(token_iscomment(toktemp))
-            return 0;
+        if(token_iscomment(toktemp) || token_iswhitespace(toktemp))
+            break;
         
         instr->tokops[i] = toktemp;
     
@@ -793,10 +793,14 @@ int read_file(const char *fn, int base, import_t **imports)
             else if(instrs[ln + base - 1].tokmnem != NULL &&
                     !strcmp(instrs[ln + base - 1].tokmnem->str, "importbin"))
             {
-                import_t *ipt = *imports;
+                import_t *ipt = *imports, *prev;
                 while(*imports != NULL)
+                {
+                    prev = *imports;
                     *imports = (*imports)->next;
+                }
                 *imports = malloc(sizeof(import_t));
+                prev->next = *imports;
                 (*imports)->fn = instrs[ln + base - 1].tokop1->str;
                 (*imports)->start = token_getnum(instrs[ln + base - 1].tokop2);
                 (*imports)->len = token_getnum(instrs[ln + base - 1].tokop3);
