@@ -100,7 +100,7 @@ int token_mnem2op(string_t *str)
     {
         if (strcmp(str->str, str_ops[i]) == 0)
             return i;
-        else if (str->str[i] == 'j' || str->str[i] == 'c')
+        else if (str->str[0] == 'j' || str->str[0] == 'c')
         {
             for (c = 0; c < 16; ++c)
             {

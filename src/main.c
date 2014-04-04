@@ -425,33 +425,48 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns, import_t *impo
         }
         for(s = 0; s < ns; ++s)
         {
-            if(instr->tokop1 && strcmp(instr->tokop1->str, syms[s].str) == 0)
+            if(instr->isdata)
             {
-                instr->op1 = syms[s].val;
-                if(instr->args != ARGS_I &&
-                   instr->args != ARGS_I_I)
-                {
-                    log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
-                    ret = -1;
-                }
+                int d;
+                for(d = 0; d < instr->num_ops; ++d)
+                    if(!strcmp(instr->tokops[d]->str, syms[s].str))
+                    {
+                        if(instr->data_size == instr->num_ops)
+                            ((char *)instr->data)[d] = (char)syms[s].val;
+                        else
+                            ((short *)instr->data)[d] = (short)syms[s].val;
+                    }
             }
-            if(instr->tokop2 && strcmp(instr->tokop2->str, syms[s].str) == 0)
+            else
             {
-                instr->op2 = syms[s].val;
-                if(instr->args != ARGS_I_I &&
-                   instr->args != ARGS_R_I)
+                if(instr->tokop1 && strcmp(instr->tokop1->str, syms[s].str) == 0)
                 {
-                    log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
-                    ret = -1;
+                    instr->op1 = syms[s].val;
+                    if(instr->args != ARGS_I &&
+                       instr->args != ARGS_I_I)
+                    {
+                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
+                        ret = -1;
+                    }
                 }
-            }
-            if(instr->tokop3 && strcmp(instr->tokop3->str, syms[s].str) == 0)
-            {
-                instr->op3 = syms[s].val;
-                if(instr->args != ARGS_R_R_I)
+                if(instr->tokop2 && strcmp(instr->tokop2->str, syms[s].str) == 0)
                 {
-                    log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
-                    ret = -1;
+                    instr->op2 = syms[s].val;
+                    if(instr->args != ARGS_I_I &&
+                       instr->args != ARGS_R_I)
+                    {
+                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
+                        ret = -1;
+                    }
+                }
+                if(instr->tokop3 && strcmp(instr->tokop3->str, syms[s].str) == 0)
+                {
+                    instr->op3 = syms[s].val;
+                    if(instr->args != ARGS_R_R_I)
+                    {
+                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
+                        ret = -1;
+                    }
                 }
             }
         }
@@ -516,6 +531,8 @@ int instr_parse(instr_t *instr)
     }
     else
         instr->tokmnem = toktemp;
+    if(!strcmp(instr->tokmnem->str, "db") || !strcmp(instr->tokmnem->str, "dw"))
+        instr->isdata = 1;
 
     /* Make first operand the condition code for jumps */
     jc = 0;
@@ -583,66 +600,6 @@ int file_read(const char *fn, char **buf)
     fclose(file);
 
     return len;
-}
-
-void expand_data(instr_t *instrs, int ni)
-{
-    int i;
-
-    for(i = 0; i < ni; i++)
-    {
-        instr_t *it = &instrs[i];
-        if(!it->valid || it->iscomment || it->islabel || it->isequ)
-            continue;
-        
-        if(!strcmp(it->tokmnem->str, "db"))
-        {
-            if(it->tokop1->str[0] == '"')
-            {
-                char *string, *end;
-                int size;
-                string = strchr(it->line->str, '"');
-                end = strchr(string + 1, '"');
-                size = end - string - 1;
-                it->data = calloc(size, 1);
-                it->data_size = size;
-                memcpy(it->data, string + 1, size);
-                it->isdata = DATA_STR;
-            }
-            else
-            {
-                int o;
-                char *data;
-                int size = it->num_ops;
-                it->data = malloc(size);
-                it->data_size = size;
-                data = (char *) it->data;
-                for(o = 0; o < it->num_ops; o++)
-                {
-                    int n = token_getnum(it->tokops[o]);
-                    data[o] = (char) n;
-                }
-                
-                it->isdata = DATA_BIN;
-            }
-        }
-        else if(!strcmp(it->tokmnem->str, "dw"))
-        {
-            int o;
-            short *data;
-            int size = it->num_ops * 2;
-            it->data = malloc(size);
-            it->data_size = size;
-            data = (short *) it->data;
-            for(o = 0; o < it->num_ops; o++)
-            {
-                int n = token_getnum(it->tokops[o]);
-                data[o] = (short) n;
-            }
-
-            it->isdata = 1;
-        }
-    }
 }
 
 void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
@@ -764,34 +721,38 @@ int read_file(const char *fn, int base, import_t **imports)
     while(line != NULL && !feof(file))
     {
         int c;
+        instr_t *it;
 
         ++ln;
         len = strlen(line);
         line[len - 1] = '\0';
-        instrs[ln + base - 1].valid = 0;
+        it = &instrs[ln + base - 1];
+        it->valid = 0;
         for(c = 0; c < len; c++)
         {
             if(line[c] != ' ' && line[c] != '\t' && line[c] != '\0' &&
                line[c] != '\r' && line[c] != '\n')
             {
-                instrs[ln + base - 1].valid = 1;
+                it->valid = 1;
                 break;
             }
         }
         
-        instrs[ln + base - 1].line = string_alloc(line, len);
-        instrs[ln + base - 1].ln = ln;
-        if(instrs[ln + base - 1].valid)
+        it->line = string_alloc(line, len);
+        it->ln = ln;
+        if(it->valid)
         {
-            instr_parse(&instrs[ln + base - 1]);
-            if(instrs[ln + base - 1].tokmnem != NULL &&
-               !strcmp(instrs[ln + base - 1].tokmnem->str, "include"))
+            instr_parse(it);
+            /* Handle an include directive. */
+            if(it->tokmnem != NULL &&
+               !strcmp(it->tokmnem->str, "include"))
             {
-                base += read_file(instrs[ln + base - 1].tokop1->str, ln + base, imports);
-                instrs[ln + base - 1].valid = 0;
+                base += read_file(it->tokop1->str, ln + base, imports);
+                it->valid = 0;
             }
-            else if(instrs[ln + base - 1].tokmnem != NULL &&
-                    !strcmp(instrs[ln + base - 1].tokmnem->str, "importbin"))
+            /* Handle a binary import directive. */
+            else if(it->tokmnem != NULL &&
+                    !strcmp(it->tokmnem->str, "importbin"))
             {
                 import_t *ipt = *imports, *prev;
                 while(*imports != NULL)
@@ -801,10 +762,10 @@ int read_file(const char *fn, int base, import_t **imports)
                 }
                 *imports = malloc(sizeof(import_t));
                 prev->next = *imports;
-                (*imports)->fn = instrs[ln + base - 1].tokop1->str;
-                (*imports)->start = token_getnum(instrs[ln + base - 1].tokop2);
-                (*imports)->len = token_getnum(instrs[ln + base - 1].tokop3);
-                (*imports)->label = instrs[ln + base - 1].tokops[3]->str;
+                (*imports)->fn = it->tokop1->str;
+                (*imports)->start = token_getnum(it->tokop2);
+                (*imports)->len = token_getnum(it->tokop3);
+                (*imports)->label = it->tokops[3]->str;
                 (*imports)->next = NULL;
                
                 syms[symind].str = (*imports)->label;
@@ -813,19 +774,68 @@ int read_file(const char *fn, int base, import_t **imports)
 
                 if(ipt != NULL)
                     *imports = ipt;
-                instrs[ln + base - 1].valid = 0;
+                it->valid = 0;
             }
+            /* Handle an inline data definition. */
+            else if(it->isdata)
+            {
+                if(it->tokop1->str[0] == '"')
+                {
+                    char *string, *end;
+                    int size;
+                    string = strchr(it->line->str, '"');
+                    end = strchr(string + 1, '"');
+                    size = end - string - 1;
+                    it->data = calloc(size, 1);
+                    it->data_size = size;
+                    memcpy(it->data, string + 1, size);
+                    it->isdata = DATA_STR;
+                }
+                else
+                {
+                    int o, bs, size;
+                    bs = 1;
+                    if(it->tokmnem->str[1] == 'w')
+                        bs = 2;
+                    size = it->num_ops * bs;
+                    it->data = malloc(size);
+                    it->data_size = size;
+                    if(bs == 1)
+                    {
+                        char *data;
+                        data = (char *) it->data;
+                        for(o = 0; o < it->num_ops; o++)
+                        {
+                            int n = token_getnum(it->tokops[o]);
+                            data[o] = (char) n;
+                        }
+                    }
+                    else
+                    {
+                        short *data;
+                        data = (short *) it->data;
+                        for(o = 0; o < it->num_ops; o++)
+                        {
+                            int n = token_getnum(it->tokops[o]);
+                            data[o] = (short) n;
+                        }
+                    }
+                    
+                    it->isdata = DATA_BIN;
+                }
+            }
+            /* Handle other cases: instructions, etc. */
             else
             {
                 /* Only consider lines with "proper" instructions. */
-                if(!instrs[ln + base - 1].islabel && !instrs[ln + base - 1].iscomment &&
-                    !instr_isequ(&instrs[ln + base - 1]) && instrs[ln + base - 1].tokmnem != 0)
+                if(!it->islabel && !it->iscomment &&
+                    !instr_isequ(it) && it->tokmnem != 0)
                 {
-                    instrs[ln + base - 1].op = token_mnem2op(instrs[ln + base - 1].tokmnem);
-                    instrs[ln + base - 1].args = op_getargsformat(&instrs[ln + base - 1]);
-                    op_fix(&instrs[ln + base - 1]);
-                    op_getops(&instrs[ln + base - 1]);
-                    op_gettype(&instrs[ln + base - 1]);
+                    it->op = token_mnem2op(it->tokmnem);
+                    it->args = op_getargsformat(it);
+                    op_fix(it);
+                    op_getops(it);
+                    op_gettype(it);
                 }
             }
         }
@@ -854,7 +864,6 @@ int main(int argc, char *argv[])
                 ln += read_file(argv[i], ln, &imports);
     }
 
-    expand_data(instrs, ln);
     syms_replace(instrs, ln, syms, symind, imports);
 
     if(verbose)
