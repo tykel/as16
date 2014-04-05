@@ -45,6 +45,7 @@ typedef struct
     char *str;
     int val;
     int islabel;
+    char *strval;
 } symbol_t;
 
 /* Structure holding state of an instruction, both in textual

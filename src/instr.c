@@ -316,7 +316,7 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *num_syms)
     {
         instr->toklabel = token_getlabel(toktemp);
         syms[*num_syms].str = instr->toklabel->str;
-        syms[*num_syms].val = -1;
+        syms[*num_syms].val = INT_MIN;
         syms[(*num_syms)++].islabel = 1;
     }
 
@@ -383,6 +383,7 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *num_syms)
                (instr->tokop1->str[2] == 'u' || instr->tokop1->str[2] == 'U'))
             {
                 syms[*num_syms].str = instr->tokmnem->str;
+                syms[*num_syms].strval = instr->tokop2->str;
                 syms[(*num_syms)++].val = token_getnum(instr->tokop2);
                 instr->isequ = 1;
             }
@@ -414,10 +415,11 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
         instr_t *instr = &instrs[i];
         for(s = 0; s < ns; ++s)
         {
+            /* A straightforward label -- map to current offset. */
             if(instr->valid && instr->toklabel != NULL &&
                strcmp(instr->toklabel->str, syms[s].str) == 0)
             {
-                if(syms[s].val != -1)
+                if(syms[s].val != INT_MIN)
                 {
                     log_error(instr->fn, instr->ln, ERR_LABEL_REDEF, syms[s].str);
                     ret = -1;
@@ -425,7 +427,35 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
                 syms[s].val = cur;
                 break;
             }
+            /* A string length constant.
+             * Find the instruction whose label is used, then find associated
+             * string and use its length. */
+            else if(instr->isequ && !strcmp(instr->tokmnem->str, syms[s].str) &&
+                    instr->tokop2->len > 3 && instr->tokop2->str[0] == '$' &&
+                    instr->tokop2->str[1] == '-')
+            {
+                int j;
+                
+                for(j = 0; j < ni; ++j)
+                {
+                    if(j == i)
+                        continue;
+                    if(instrs[j].toklabel &&
+                       !strcmp(instrs[j].toklabel->str, instr->tokop2->str + 2))
+                    {
+                        if(instrs[j].islabel && ni > j + 1 &&
+                           instrs[j + 1].isdata == DATA_STR)
+                            syms[s].val = strlen(instrs[j + 1].data);
+                        else if(instrs[j].isdata == DATA_STR)
+                            syms[s].val = strlen(instrs[j].data);
+                        
+                        break;
+                    }
+                }
+            }
         }
+        /* Only advance if we have encountered either a data definition or an 
+         * instruction. */
         if(instr->isdata)
             cur += instr->data_size;
         else if(instr->valid && !instr->iscomment && !instr->islabel &&
@@ -452,12 +482,12 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
     for(i = 0; i < ni; ++i)
     {
         instr_t *instr = &instrs[i];
-        if(!instr->valid || instr->islabel || instr->iscomment)
+        if(!instr->valid || instr->islabel || instr->iscomment || instr->isequ)
         {
             if(!instr->isstart)
                 continue;
         }
-        if(instr->isdata)
+        if(instr->isdata == DATA_BIN)
         {
             int d;
             for(d = 0; d < instr->num_ops; ++d)

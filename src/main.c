@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "defs.h"
 #include "strings.h"
@@ -279,7 +280,7 @@ static int file_parse(const char *fn, int base, import_t **imports)
                 (*imports)->next = NULL;
                
                 syms[num_syms].str = (*imports)->label;
-                syms[num_syms].val = -1;
+                syms[num_syms].val = INT_MIN;
                 syms[num_syms++].islabel = 1;
 
                 if(ipt != NULL)
@@ -339,7 +340,7 @@ static int file_parse(const char *fn, int base, import_t **imports)
             {
                 /* Only consider lines with "proper" instructions. */
                 if(!it->islabel && !it->iscomment &&
-                    !instr_isequ(it) && it->tokmnem != 0)
+                    !it->isequ && it->tokmnem != 0)
                 {
                     it->op = token_mnem2op(it->tokmnem);
                     it->args = op_getargsformat(it);
