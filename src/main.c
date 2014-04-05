@@ -176,6 +176,7 @@ static int output_file(unsigned char *buf, instr_t *instrs, int ni, symbol_t *sy
         if(ifile == NULL)
         {
             fprintf(stderr, "error: could not import %s\n", ipt->fn);
+            ipt = ipt->next;
             continue;
         }
         
