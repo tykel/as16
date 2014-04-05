@@ -20,7 +20,7 @@
 #ifndef DEFS_H
 #define DEFS_H
 
-#define MAX_OPS 256
+#include <inttypes.h>
 
 #define DATA_BIN 1
 #define DATA_STR 2
@@ -41,76 +41,6 @@ typedef enum
 } err_t;
 
 
-/* Possible argument combinations. */
-typedef enum
-{
-    ARGS_ERR = -1,
-    ARGS_NONE = 0,
-    ARGS_I,
-    ARGS_I_I,
-    ARGS_R,
-    ARGS_R_I,
-    ARGS_SP_I,
-    ARGS_R_R,
-    ARGS_R_R_I,
-    ARGS_R_R_R
-} instr_args_t;
-
-
-/* All the instruction encodings. */
-typedef enum
-{
-    INSTR_OPERR = -1,
-    INSTR_OP000000 = 0,
-    INSTR_OP000N00,
-    INSTR_OP00LLHH,
-    INSTR_OP0X0000,
-    INSTR_OP0X0N00,
-    INSTR_OP00000N,
-    INSTR_OP0XLLHH,
-    INSTR_OPYX0000,
-    INSTR_OPYXLLHH,
-    INSTR_OPBBLLHH,
-    INSTR_OPYX0Z00
-} instr_type_t;
-
-/* Help out with the string manip */
-typedef struct
-{
-    char *str;
-    int len;
-} string_t;
-
-
-/* Structure holding state of an instruction, both in textual
- * form and compiled form. */
-typedef struct
-{
-    int valid;
-    int ln;
-    int iscomment, islabel, isequ, isdata;
-
-    instr_args_t args;
-    instr_type_t type;
-
-    string_t *line;
-    string_t *toklabel, *tokmnem, *tokops[MAX_OPS], *tokop1, *tokop2, *tokop3;
-    int op, op1, op2, op3, num_ops, data_size;
-    void *data;
-
-    int addr;
-
-} instr_t;
-
-/* Structure holding a mapping from label/constant to its
- * numerical value. */
-typedef struct
-{
-    char *str;
-    int val;
-    int islabel;
-} symbol_t;
-
 /* Linked list for tracking binary imports in a file. */
 struct import;
 typedef struct import
@@ -123,8 +53,24 @@ typedef struct import
     struct import *next;
 } import_t;
 
+/* Output header format. */
+typedef struct
+{
+    uint32_t magic;
+    uint8_t  reserved;
+    uint8_t  spec_ver;
+    uint32_t rom_size;
+    uint16_t start_addr;
+    uint32_t crc32_sum;
+
+} __attribute__((packed)) header_t;
+
+#include "instr.h"
+
 extern const instr_args_t op_args[256];
 extern const instr_type_t op_types[256];
+
+void log_error(char *fn, int ln, err_t err, void *data);
 
 #endif
 

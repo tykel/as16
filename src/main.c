@@ -17,18 +17,23 @@
  *   along with as16.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "defs.h"
-#include "strings.h"
-#include "format.h"
-#include "token.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Globals */
+#include "defs.h"
+#include "strings.h"
+#include "format.h"
+#include "tstring.h"
+#include "token.h"
+#include "crc.h"
 
+/* Globals */
 typedef unsigned short uint16_t;
+
+#define VER_MAJOR 1
+#define VER_MINOR 0
+#define VER_REV   0
 
 #define MAX_LINES 10000
 
@@ -37,14 +42,6 @@ static instr_t instrs[MAX_LINES];
 static symbol_t syms[MAX_LINES];
 static int symind;
 
-/*
- * Program flow (w/ support for macros):
- * - read file into line array
- * - run "preprocessor" on lines, substitute macros by defs
- * - run tokeniser to generate instr_t array
- * - run lexer to substitute labels etc.
- * - run code generator
- */
 
 void log_error(char *fn, int ln, err_t err, void *data)
 {
@@ -81,540 +78,14 @@ void log_error(char *fn, int ln, err_t err, void *data)
     }
 }
 
-string_t *string_alloc(char *cs, int len)
-{
-    string_t *str = NULL;
-    
-    if(cs != NULL)
-    {
-        str = malloc(sizeof(string_t));
-        if(str != NULL)
-        {
-            str->str = NULL;
-            str->len = 0;
-            str->str = malloc(len + (len > 0));
-            if(str->str != NULL)
-            {
-                memcpy(str->str, cs, len);
-                str->len = len;
-            }
-            if(len == 0)
-            {
-                str->str[0] = '\0';
-            }
-        }
-    }
-
-    return str;
-}
-
-void string_free(string_t *str)
-{
-    free(str->str);
-    free(str);
-}
-
-/* Return the input format of the passed opcode. */
-instr_args_t op_getargsformat(instr_t *instr)
-{
-    instr_args_t af = ARGS_ERR;
-
-    if(instr->op < 0 || instr->op > 255)
-    {
-        return af;
-    }
-    switch(op_argsformat[instr->op])
-    {
-    case ARGS_NONE:
-    {
-        if(instr->tokop1 == NULL &&
-           instr->tokop2 == NULL &&
-           instr->tokop3 == NULL)
-        {
-            af = ARGS_NONE;
-        }
-        break;
-    }
-    case ARGS_I:
-    {
-        if(instr->tokop1 != NULL &&
-           !token_isreg(instr->tokop1) &&
-           instr->tokop2 == NULL &&
-           instr->tokop3 == NULL)
-        {
-            af = ARGS_I;
-        }
-        break;
-    }
-    case ARGS_I_I:
-    {
-        if(instr->tokop1 != NULL &&
-           !token_isreg(instr->tokop1) &&
-           instr->tokop2 != NULL &&
-           !token_isreg(instr->tokop2) &&
-           instr->tokop3 == NULL)
-        {
-            af = ARGS_I_I;
-        }
-        break;
-    }
-    case ARGS_R:
-    {
-        if(instr->tokop1 != NULL &&
-           token_isreg(instr->tokop1) &&
-           instr->tokop2 == NULL &&
-           instr->tokop3 == NULL)
-        {
-            af = ARGS_R;
-        }
-        break;
-    }
-    case ARGS_R_I:
-    {
-        if(instr->tokop1 != NULL &&
-           token_isreg(instr->tokop1) &&
-           instr->tokop2 != NULL &&
-           !token_isreg(instr->tokop2) &&
-           instr->tokop3 == NULL)
-        {
-            af = ARGS_R_I;
-        }
-        break;
-    }
-    case ARGS_SP_I:
-    {
-        if(instr->tokop1 != NULL && instr->tokop1->len > 2 &&
-           instr->tokop1->str[0] == 's' && instr->tokop1->str[1] == 'p' &&
-           instr->tokop2 != NULL)
-        {
-            af = ARGS_SP_I;
-        }
-        break;
-    }
-    case ARGS_R_R:
-    {
-        if(instr->tokop1 != NULL &&
-           token_isreg(instr->tokop1) &&
-           instr->tokop2 != NULL &&
-           token_isreg(instr->tokop2) &&
-           instr->tokop3 == NULL)
-        {
-            af = ARGS_R_R;
-        }
-        break;
-    }
-    case ARGS_R_R_I:
-    {
-        if(instr->tokop1 != NULL &&
-           token_isreg(instr->tokop1) &&
-           instr->tokop2 != NULL &&
-           token_isreg(instr->tokop2) &&
-           instr->tokop3 != NULL &&
-           !token_isreg(instr->tokop3))
-        {
-            af = ARGS_R_R_I;
-        }
-        break;
-    }
-    case ARGS_R_R_R:
-    {
-        if(instr->tokop1 != NULL &&
-           token_isreg(instr->tokop1) &&
-           instr->tokop2 != NULL &&
-           token_isreg(instr->tokop2) &&
-           instr->tokop3 != NULL &&
-           token_isreg(instr->tokop3))
-        {
-            af = ARGS_R_R_R;
-        }
-        break;
-    }
-    case ARGS_ERR:
-    /*default:*/
-        printf("ARGS_ERR/unknown found!! Shouldn't happen...\n");
-        printf("instruction: op=%02x, '%s'\n", instr->op, instr->line->str);
-        break; 
-    }
-    return af;
-}
-
-/* Determine the instruction's operand values. */
-void op_getops(instr_t *instr)
-{
-    instr_args_t at = instr->args;
-    if(at == ARGS_NONE || at == ARGS_ERR)
-        return;
-
-    /* First argument. */
-    if(at == ARGS_I || at == ARGS_I_I)
-        instr->op1 = token_getnum(instr->tokop1);
-    else if(at == ARGS_R || at == ARGS_R_I || at == ARGS_R_R ||
-            at == ARGS_R_R_I || at == ARGS_R_R_R)
-    {
-        if(instr->tokop1->len == 3)
-            instr->op1 = token_getreg(instr->tokop1);
-        else
-            printf("error: %s is not a register\n", instr->tokop1->str);
-    }
-
-    /* Second argument. */
-    if(at == ARGS_I_I || at == ARGS_R_I)
-        instr->op2 = token_getnum(instr->tokop2);
-    else if(at == ARGS_R_R || at == ARGS_R_R_I || at == ARGS_R_R_R)
-    {
-        if(instr->tokop2->len == 3)
-            instr->op2 = token_getreg(instr->tokop2);
-        else
-            printf("error: %s is not a register\n", instr->tokop2->str);
-    }
-    
-    /* Third argument. */
-    if(at == ARGS_R_R_I)
-        instr->op3 = token_getnum(instr->tokop3);
-    else if(at == ARGS_R_R_R)
-    {
-        if(instr->tokop3->len == 3)
-            instr->op3 = token_getreg(instr->tokop3);
-        else
-            printf("error: %s is not a register\n", instr->tokop3->str);
-    }
-}
-
-/* When a mnemonic maps to multiple ops, ensure we use the right one. */
-void op_fix(instr_t *instr)
-{
-    int op = instr->op;
-    /* DRW */
-    if(op == 0x20 && instr->tokop1 != NULL &&
-            !strcmp(instr->tokop1->str, "sp"))
-    {
-        instr->op++;
-        instr->args = ARGS_SP_I;
-    }
-    else if((op == 0x22 || op == 0x30) && instr->tokop2 != NULL &&
-            instr->tokop2->len > 2 && instr->tokop2->str[0] == 'r')
-    {
-        instr->op++;
-        instr->args = ARGS_R_R;
-    }
-    else if((op == 0x05 || op == 0x41 || op == 0x51 ||
-             op == 0x61 || op == 0x71 || op == 0x81 || op == 0x91 ||
-             op == 0xA1 || op == 0xA4 || op == 0xA8) && instr->tokop3 != NULL &&
-            instr->tokop3->len > 2 && instr->tokop3->str[0] == 'r')
-    {
-        instr->op++;
-        instr->args = ARGS_R_R_R;
-    }
-    else if((op == 0xB0 || op == 0xB1 || op == 0xB2) && instr->args == ARGS_R_R)
-    {
-        instr->op += 3;
-        instr->args = ARGS_R_R;
-    }
-    else if((op == 0xE1 || op == 0xE4) && instr->tokop2 != NULL &&
-            instr->tokop2->len > 2 && instr->tokop2->str[0] == 'r')
-    {
-        instr->op++;
-        instr->args = ARGS_R_R;
-    }
-}
-
-void op_gettype(instr_t *instr)
-{
-    switch(instr->args)
-    {
-    case ARGS_NONE:
-        instr->type = INSTR_OP000000;
-        break;
-    case ARGS_I:
-        if(instr->op1 == 0x03)
-            instr->type = INSTR_OP000N00;
-        else
-            instr->type = INSTR_OP00LLHH;
-        break;
-    case ARGS_I_I:
-        if(instr->op == 0x08)
-            instr->type = INSTR_OP00000N;
-        else if(instr->op == 0x0E)
-            instr->type = INSTR_OPBBLLHH;
-        else
-            instr->type = INSTR_OPYXLLHH;
-        break;
-    case ARGS_R:
-        instr->type = INSTR_OP0X0000;
-        break;
-    case ARGS_R_I:
-        if((instr->op & 0xF0) == 0xB0)
-            instr->type = INSTR_OP0X0N00;
-        else
-            instr->type = INSTR_OP0XLLHH;
-        break;
-    case ARGS_SP_I:
-        instr->type = INSTR_OP0XLLHH;
-        break;
-    case ARGS_R_R:
-        instr->type = INSTR_OPYX0000;
-        break;
-    case ARGS_R_R_I:
-        instr->type = INSTR_OPYXLLHH;
-        break;
-    case ARGS_R_R_R:
-        instr->type = INSTR_OPYX0Z00;
-        break;
-    default:
-        break;
-    }
-}
-
-/*
- * Replace all (unresolved) symbols with their values.
- * In the case of labels, if unassigned give it its initial value.
- */
-int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns, import_t *imports)
-{
-    int i, s, ret;
-    int cur;
-    import_t *ipt = imports;
-    ret = 0;
-
-    /* First loop: replace all labels with their offset values. */
-    for(i = 0, cur = 0; i < ni; ++i)
-    {
-        instr_t *instr = &instrs[i];
-        for(s = 0; s < ns; ++s)
-        {
-            if(instr->valid && instr->toklabel != NULL &&
-               strcmp(instr->toklabel->str, syms[s].str) == 0)
-            {
-                if(syms[s].val != -1)
-                {
-                    log_error("", instr->ln, ERR_LABEL_REDEF, syms[s].str);
-                    ret = -1;
-                }
-                syms[s].val = cur;
-            }
-        }
-        if(instr->isdata)
-            cur += instr->data_size;
-        else if(instr->valid && !instr->iscomment && !instr->islabel &&
-                !instr->isequ)
-            cur += 4;
-    }
-
-    /* Second loop: put values for import label offsets. */
-    while(ipt != NULL)
-    {
-        for(s = 0; s < ns; s++)
-        {
-            if(!strcmp(syms[s].str, ipt->label))
-            {
-                syms[s].val = cur;
-                cur += ipt->len;
-                break;
-            }
-        }
-        ipt = ipt->next;
-    }
-
-    /* Third loop: replace all references to symbols with values. */
-    for(i = 0; i < ni; ++i)
-    {
-        instr_t *instr = &instrs[i];
-        if(!instr->valid || instr->islabel || instr->iscomment)
-        {
-            continue;
-        }
-        for(s = 0; s < ns; ++s)
-        {
-            if(instr->isdata)
-            {
-                int d;
-                for(d = 0; d < instr->num_ops; ++d)
-                    if(!strcmp(instr->tokops[d]->str, syms[s].str))
-                    {
-                        if(instr->data_size == instr->num_ops)
-                            ((char *)instr->data)[d] = (char)syms[s].val;
-                        else
-                            ((short *)instr->data)[d] = (short)syms[s].val;
-                    }
-            }
-            else
-            {
-                if(instr->tokop1 && strcmp(instr->tokop1->str, syms[s].str) == 0)
-                {
-                    instr->op1 = syms[s].val;
-                    if(instr->args != ARGS_I &&
-                       instr->args != ARGS_I_I)
-                    {
-                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
-                        ret = -1;
-                    }
-                }
-                if(instr->tokop2 && strcmp(instr->tokop2->str, syms[s].str) == 0)
-                {
-                    instr->op2 = syms[s].val;
-                    if(instr->args != ARGS_I_I &&
-                       instr->args != ARGS_R_I)
-                    {
-                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
-                        ret = -1;
-                    }
-                }
-                if(instr->tokop3 && strcmp(instr->tokop3->str, syms[s].str) == 0)
-                {
-                    instr->op3 = syms[s].val;
-                    if(instr->args != ARGS_R_R_I)
-                    {
-                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
-                        ret = -1;
-                    }
-                }
-            }
-        }
-    }
-
-    return ret;
-}
-
-int instr_isequ(instr_t *instr)
-{
-    return (instr->valid &&
-            instr->tokmnem != NULL && instr->tokop1 != NULL &&
-            instr->tokop2 != NULL && instr->tokop1->len == 4 &&
-            instr->tokop1->str[0] == 'e' &&
-            instr->tokop1->str[1] == 'q' &&
-            instr->tokop1->str[2] == 'u');
-}
-
-int instr_parse(instr_t *instr)
-{
-    string_t *toktemp;
-    char *sp;
-    int i, jc;
-   
-    if(!instr->valid)
-        return -1;
-
-    sp = instr->line->str;
-    
-    /* Label */
-    if(*sp == '\0')
-        return 0;
-    toktemp = token_next(&sp);
-    if(token_iscomment(toktemp))
-    {
-        instr->iscomment = 1;
-        return 0;
-    }
-    if(token_islabel(toktemp))
-    {
-        instr->toklabel = token_getlabel(toktemp);
-        syms[symind].str = instr->toklabel->str;
-        syms[symind].val = -1;
-        syms[symind++].islabel = 1;
-    }
-
-    /* Mnemonic */
-    if(instr->toklabel != NULL)
-    {
-        if(*sp == '\0')
-        {
-            instr->islabel = 1;
-            return 0;
-        }
-        toktemp = token_next(&sp);
-        if(token_iscomment(toktemp) || token_iswhitespace(toktemp))
-        {
-            instr->islabel = 1;
-            return 0;
-        }
-        instr->tokmnem = toktemp;
-    }
-    else
-        instr->tokmnem = toktemp;
-    if(!strcmp(instr->tokmnem->str, "db") || !strcmp(instr->tokmnem->str, "dw"))
-        instr->isdata = 1;
-
-    /* Make first operand the condition code for jumps */
-    jc = 0;
-    if(instr->tokmnem->str[0] == 'j' || instr->tokmnem->str[0] == 'c')
-    {
-        for(i = 0; i < 16; ++i)
-        {
-            if(!strcmp(str_cond[i], instr->tokmnem->str + 1) ||
-               !strcmp(str_cond_alt[i], instr->tokmnem->str + 1))
-            {
-                char temp[3] = { 'r', 0, 0 };
-                temp[1] = i + (i < 10 ? '0' : 'a' - 10);
-                instr->tokop1 = string_alloc(temp, 3);
-                jc = 1;
-            }
-        }
-    }
-    for(i = jc; *sp != '\0' && i < MAX_OPS; ++i)
-    {
-        toktemp = token_next(&sp);
-        if(token_iscomment(toktemp) || token_iswhitespace(toktemp))
-            break;
-        
-        instr->tokops[i] = toktemp;
-    
-        if(i == 0)
-            instr->tokop1 = toktemp;
-        else if(i == 1)
-        {
-            instr->tokop2 = toktemp;
-            if((instr->tokop1->str[0] == 'e' || instr->tokop1->str[0] == 'E') &&
-               (instr->tokop1->str[1] == 'q' || instr->tokop1->str[1] == 'Q') &&
-               (instr->tokop1->str[2] == 'u' || instr->tokop1->str[2] == 'U'))
-            {
-                syms[symind].str = instr->tokmnem->str;
-                syms[symind++].val = token_getnum(instr->tokop2);
-                instr->isequ = 1;
-            }
-        }
-        else if(i == 2)
-            instr->tokop3 = toktemp;
-    }
-    instr->num_ops = i;
-
-    return 0;
-}
-
-/* Read a binary file into an unallocated buffer. */
-int file_read(const char *fn, char **buf)
-{
-    FILE *file = NULL;
-    int len;
-
-    if((file = fopen(fn, "rb")) == NULL)
-        return ERR_FILE;
-    fseek(file, 0, SEEK_END);
-    len = ftell(file);
-    rewind(file);
-
-    *buf = malloc(len + 1);
-    if(*buf == NULL)
-        return ERR_MALLOC;
-    if(fread(*buf, 1, len, file) < len)
-        return ERR_FILE;
-    fclose(file);
-
-    return len;
-}
-
-void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
+/* Write the data and instructions in binary format to buf. */
+static int output_file(unsigned char *buf, instr_t *instrs, int ni, symbol_t *syms,
      int ns, import_t *imports)
 {
-    int i;
+    int i, p;
     import_t *ipt;
-    FILE *file = NULL;
 
-    if((file = fopen(fn, "wb")) == NULL)
-    {
-        fprintf(stderr, "error: could not open %s for writing\n", fn);
-        exit(-1);
-    }
-    
+    p = 0;
     for(i = 0; i < ni; ++i)
     {
         instr_t *it = &instrs[i];
@@ -622,7 +93,8 @@ void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
             continue;
         if(it->isdata)
         {
-            fwrite(it->data, 1, it->data_size, file);
+            memcpy(buf + p, it->data, it->data_size);
+            p += it->data_size;
         }
         else
         {
@@ -669,7 +141,9 @@ void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
             default:
                 break;
             }
-            fwrite(idw, 1, 4, file);
+
+            memcpy(buf + p, idw, 4);
+            p += 4;
         }
     }
 
@@ -677,7 +151,6 @@ void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
     while(ipt != NULL)
     {
         int rlen;
-        unsigned char *buf;
         FILE *ifile = NULL;
         
         ifile = fopen(ipt->fn, "rb");
@@ -686,23 +159,24 @@ void output_file(const char *fn, instr_t *instrs, int ni, symbol_t *syms,
             fprintf(stderr, "error: could not import %s\n", ipt->fn);
             continue;
         }
-        buf = malloc(ipt->len);
+        
         if(fseek(ifile, ipt->start, SEEK_SET))
             fprintf(stderr, "warning: invalid start position %d in %s\n",
                     ipt->start, ipt->fn);
-        if((rlen = fread(buf, 1, ipt->len, ifile)) != ipt->len)
+        if((rlen = fread(buf + p, 1, ipt->len, ifile)) != ipt->len)
             fprintf(stderr, "warning: read %d bytes from %s (requested %d)\n",
                     rlen, ipt->fn, ipt->len);
-        fwrite(buf, 1, rlen, file);
+        p += rlen;
         fclose(ifile);
 
         ipt = ipt->next;
     }
 
-    fclose(file);
+    return p;
 }
 
-int read_file(const char *fn, int base, import_t **imports)
+/* Parse a whole file at a time -- recursively calling itself for includes. */
+static int file_parse(const char *fn, int base, import_t **imports)
 {
     FILE *file;
     char line[200] = {0};
@@ -742,26 +216,28 @@ int read_file(const char *fn, int base, import_t **imports)
         it->ln = ln;
         if(it->valid)
         {
-            instr_parse(it);
+            instr_parse(it, syms, &symind);
             /* Handle an include directive. */
             if(it->tokmnem != NULL &&
                !strcmp(it->tokmnem->str, "include"))
             {
-                base += read_file(it->tokop1->str, ln + base, imports);
+                base += file_parse(it->tokop1->str, ln + base, imports);
                 it->valid = 0;
             }
             /* Handle a binary import directive. */
             else if(it->tokmnem != NULL &&
                     !strcmp(it->tokmnem->str, "importbin"))
             {
-                import_t *ipt = *imports, *prev;
+                import_t *ipt, *prev;
+                ipt = *imports, prev = NULL;
                 while(*imports != NULL)
                 {
                     prev = *imports;
                     *imports = (*imports)->next;
                 }
                 *imports = malloc(sizeof(import_t));
-                prev->next = *imports;
+                if(prev)
+                    prev->next = *imports;
                 (*imports)->fn = it->tokop1->str;
                 (*imports)->start = token_getnum(it->tokop2);
                 (*imports)->len = token_getnum(it->tokop3);
@@ -837,6 +313,7 @@ int read_file(const char *fn, int base, import_t **imports)
                     op_getops(it);
                     op_gettype(it);
                 }
+            
             }
         }
         fgets(line, 200, file);
@@ -845,10 +322,43 @@ int read_file(const char *fn, int base, import_t **imports)
     return ln;
 }
 
+/* Print the help text. */
+void print_help(void)
+{
+    printf("Usage: as16 SOURCE... [OPTION]...\n\n"
+           "    Assemble SOURCE(s) to produce a Chip16 binary.\n\n"
+           "File options:\n\n"
+           "    -o DEST: output file to DEST\n"
+           "    -z: if assembled code < 64KB, zero rest up to 64KB\n"
+           "    -r: omit header, write only raw Chip16 ROM\n\n"
+           "Information options:\n\n"
+           "    -m: output mmap.txt which displays the address of each label\n"
+           "    -v: switch to verbose output (default is silent)\n"
+           "Miscellaneous options:\n\n"
+           "    -h: display this help text\n"
+           "    --version: display version information and exit\n\n");
+    printf("Please report bugs to <https://github.com/tykel/as16/issues>\n");
+}
+
+/* Print the version information. */
+void print_ver(void)
+{
+    printf("as16 %d.%d.%d -- a Chip16 assembler\n",
+            VER_MAJOR, VER_MINOR, VER_REV);
+}
+
 int main(int argc, char *argv[])
 {
-    int verbose, ln, i;    
+    crc_t crc;
+    header_t hdr;
+    FILE *outfile;
+    int verbose, raw, zero, mmap, help, ver, ln, i, f, size;
+    unsigned char *outbuf, version;
+    char *files[256], *output = "output.c16";
 
+    f = ln = raw = verbose = zero = mmap = help = ver = size = 0;
+    version = 0x13;
+    /* Get options and filenames, and parse the latter. */
     if(argc > 1)
     {
         for(i = 1; i < argc; i++)
@@ -857,15 +367,75 @@ int main(int argc, char *argv[])
             {
                 if(!strcmp(argv[i], "-v"))
                     verbose = 1;
+                else if(!strcmp(argv[i], "-r"))
+                    raw = 1;
+                else if(!strcmp(argv[i], "-z"))
+                    zero = 1;
+                else if(!strcmp(argv[i], "-m"))
+                    mmap = 1;
+                else if(!strcmp(argv[i], "-h"))
+                    help = 1;
+                else if(!strcmp(argv[i], "--version"))
+                    ver = 1;
+                else if(!strcmp(argv[i], "-o"))
+                {
+                    if(argc > i + 1)
+                        output = argv[++i];
+                    else
+                        fprintf(stderr, "warning: no output filename supplied"
+                                        " with -o option; using default\n");
+                }
             }
+            else
+                files[f++] = argv[i];
         }
-        for(i = 1, ln = 0; i < argc; i++)
-            if(argv[i][0] != '-')
-                ln += read_file(argv[i], ln, &imports);
+        /* If help text was requested, print that and do nothing else. */
+        if(help)
+        {
+            print_help();
+            exit(0);
+        }
+        /* Similarly for version information. */
+        else if(ver)
+        {
+            print_ver();
+            exit(0);
+        }
+        /* If no file was supplied, complain and exit. */
+        if(f == 0)
+        {
+            fprintf(stderr, "error: no input file specified\n");
+            exit(1);
+        }
+        /* Otherwise, parse each file in order. */
+        for(i = 0; i < f; i++)
+            ln += file_parse(files[i], ln, &imports);
     }
-
+    
+    /* Replace symbols by their numeric values. */
     syms_replace(instrs, ln, syms, symind, imports);
 
+    /* Output a listing of label mappings, if requested. */
+    if(mmap)
+    {
+        FILE *mmfile = NULL;
+        if((mmfile = fopen("mmap.txt", "w")) == NULL)
+            fprintf(stderr, "error: could not write to mmap.txt\n");
+        else
+        {
+            fprintf(mmfile, "Label memory mapping:\n");
+            fprintf(mmfile, "---------------------\n\n");
+            for(i = 0; i < symind; ++i)
+            {
+                if(syms[i].islabel)
+                    fprintf(mmfile, " 0x%04x : %s\n", syms[i].val, syms[i].str);
+            }
+            fprintf(mmfile, "\n---------------------\n");
+            fclose(mmfile);
+        }
+    }
+    /* Output the symbol table, and internal representation of instructions, if
+     * requested. */
     if(verbose)
     {
         printf("Symbol table\n------------\n");
@@ -900,7 +470,40 @@ int main(int argc, char *argv[])
             printf(" %s\n", instrs[i].line->str);
         }
     }
-    output_file("output.c16", instrs, ln, syms, symind, imports);
+
+    /* Write the program machine code. */
+    outbuf = malloc(64 * 1024);
+    size = output_file(outbuf, instrs, ln, syms, symind, imports);
+    
+    /* Write the header. */
+    crc = crc_init();
+    crc = crc_update(crc, outbuf, size);
+    crc = crc_finalize(crc);
+
+    hdr.magic = 0x36314843;
+    hdr.reserved = 0;
+    hdr.spec_ver = version;
+    hdr.rom_size = size;
+    hdr.start_addr = 0;
+    hdr.crc32_sum = crc;
+    
+    /* Write the program, and header unless requested, to disk. */
+    outfile = fopen(output, "wb");
+    if(outfile == NULL)
+    {
+        fprintf(stderr, "error: could not write to %s\n", output);
+        exit(0);
+    }
+    if(!raw)
+        fwrite(&hdr, sizeof(header_t), 1, outfile);
+    fwrite(outbuf, 1, size, outfile);
+    if(zero && size < 64*1024)
+    {
+        uint8_t b = 0;
+        for(i = size; i < 64*1024; ++i)
+            fwrite(&b, 1, 1, outfile);
+    }
+    fclose(outfile);
         
     exit(0);
 }
