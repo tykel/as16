@@ -369,9 +369,9 @@ static int file_parse(const char *fn, int base, import_t **imports)
                 {
                     it->op = token_mnem2op(it->tokmnem);
                     it->args = op_getargsformat(it);
+                    op_fix(it);
                     if(it->args == ARGS_ERR)
                         log_error(it->fn, it->ln, ERR_BAD_ARGS, it->line->str);
-                    op_fix(it);
                     op_getops(it);
                     op_gettype(it);
                 }
