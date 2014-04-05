@@ -44,7 +44,7 @@ static symbol_t syms[MAX_LINES];
 static int num_syms;
 
 
-void log_error(char *fn, int ln, err_t err, void *data)
+void log_error(const char *fn, int ln, err_t err, void *data)
 {
     fprintf(stderr, "%s:%d: ", fn, ln);
     switch(err)
@@ -72,6 +72,12 @@ void log_error(char *fn, int ln, err_t err, void *data)
         break;
     case ERR_NOT_REG:
         fprintf(stderr, "error: '%s' is not a register\n", (char *)data);
+        break;
+    case ERR_BAD_ARGS:
+        fprintf(stderr, "error: incorrect argument(s)\n");
+        break;
+    case ERR_NOT_LABEL:
+        fprintf(stderr, "error: unknown constant '%s'\n", (char *)data);
         break;
     default:
         fprintf(stderr, "error: unknown\n");
@@ -203,6 +209,7 @@ static int file_parse(const char *fn, int base, import_t **imports)
         line[len - 1] = '\0';
         it = &instrs[ln + base - 1];
         it->valid = 0;
+        it->fn = fn;
         for(c = 0; c < len; c++)
         {
             if(line[c] != ' ' && line[c] != '\t' && line[c] != '\0' &&
@@ -310,6 +317,8 @@ static int file_parse(const char *fn, int base, import_t **imports)
                 {
                     it->op = token_mnem2op(it->tokmnem);
                     it->args = op_getargsformat(it);
+                    if(it->args == ARGS_ERR)
+                        log_error(it->fn, it->ln, ERR_BAD_ARGS, it->line->str);
                     op_fix(it);
                     op_getops(it);
                     op_gettype(it);
@@ -327,16 +336,17 @@ static int file_parse(const char *fn, int base, import_t **imports)
 static void print_help(void)
 {
     printf("Usage: as16 SOURCE... [OPTION]...\n\n"
-           "    Assemble SOURCE(s) to produce a Chip16 binary.\n\n"
-           "File options:\n\n"
+           "    Assemble SOURCE(s) to produce a Chip16 binary.\n\n");
+    printf("File options:\n\n"
            "    -o DEST: output file to DEST\n"
-           "    -z: if assembled code < 64KB, zero rest up to 64KB\n"
-           "    -r: omit header, write only raw Chip16 ROM\n\n"
-           "Information options:\n\n"
-           "    -m: output mmap.txt which displays the address of each label\n"
-           "    -v: switch to verbose output (default is silent)\n"
-           "Miscellaneous options:\n\n"
-           "    -h: display this help text\n"
+           "    -z, --zero: if assembled code < 64KB, zero rest up to 64KB\n"
+           "    -r, --raw: omit header, write only raw Chip16 ROM\n\n");
+    printf("Information options:\n\n"
+           "    -m, --mmap: output mmap.txt which displays the address of each"
+           " label\n"
+           "    -v, --verbose: switch to verbose output (default is silent)\n");
+    printf("Miscellaneous options:\n\n"
+           "    -h, --help: display this help text\n"
            "    --version: display version information and exit\n\n");
     printf("Please report bugs to <https://github.com/tykel/as16/issues>\n");
 }
@@ -404,15 +414,15 @@ int main(int argc, char *argv[])
         {
             if(argv[i][0] == '-')
             {
-                if(!strcmp(argv[i], "-v"))
+                if(!strcmp(argv[i], "-v") || !strcmp(argv[i], "--verbose"))
                     verbose = 1;
-                else if(!strcmp(argv[i], "-r"))
+                else if(!strcmp(argv[i], "-r") || !strcmp(argv[i], "--raw"))
                     raw = 1;
-                else if(!strcmp(argv[i], "-z"))
+                else if(!strcmp(argv[i], "-z") || !strcmp(argv[i], "--zero"))
                     zero = 1;
-                else if(!strcmp(argv[i], "-m"))
+                else if(!strcmp(argv[i], "-m") || !strcmp(argv[i], "--mmap"))
                     mmap = 1;
-                else if(!strcmp(argv[i], "-h"))
+                else if(!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
                     help = 1;
                 else if(!strcmp(argv[i], "--version"))
                     ver = 1;
@@ -424,6 +434,9 @@ int main(int argc, char *argv[])
                         fprintf(stderr, "warning: no output filename supplied"
                                         " with -o option; using default\n");
                 }
+                else
+                    fprintf(stderr, "warning: unknown option '%s', ignoring\n",
+                            argv[i]);
             }
             else
                 files[f++] = argv[i];

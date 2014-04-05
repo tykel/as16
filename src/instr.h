@@ -53,6 +53,7 @@ typedef struct
 {
     int valid;
     int ln;
+    const char *fn;
     int iscomment, islabel, isequ, isdata;
 
     instr_args_t args;

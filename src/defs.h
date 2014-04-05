@@ -37,7 +37,9 @@ typedef enum
     ERR_NO_OP3 = -6,
     ERR_LABEL_REDEF = -7,
     ERR_NOT_REG = -8,
-    ERR_INVALID_OP = -9
+    ERR_INVALID_OP = -9,
+    ERR_BAD_ARGS = -10,
+    ERR_NOT_LABEL = -11
 } err_t;
 
 
@@ -70,7 +72,7 @@ typedef struct
 extern const instr_args_t op_args[256];
 extern const instr_type_t op_types[256];
 
-void log_error(char *fn, int ln, err_t err, void *data);
+void log_error(const char *fn, int ln, err_t err, void *data);
 
 #endif
 

@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 
 #include "instr.h"
 #include "token.h"
@@ -166,7 +167,7 @@ void op_getops(instr_t *instr)
         if(instr->tokop1->len == 3)
             instr->op1 = token_getreg(instr->tokop1);
         else
-            printf("error: %s is not a register\n", instr->tokop1->str);
+            log_error(instr->fn, instr->ln, ERR_NOT_REG, instr->tokop1->str);
     }
 
     /* Second argument. */
@@ -177,7 +178,7 @@ void op_getops(instr_t *instr)
         if(instr->tokop2->len == 3)
             instr->op2 = token_getreg(instr->tokop2);
         else
-            printf("error: %s is not a register\n", instr->tokop2->str);
+            log_error(instr->fn, instr->ln, ERR_NOT_REG, instr->tokop2->str);
     }
     
     /* Third argument. */
@@ -188,7 +189,7 @@ void op_getops(instr_t *instr)
         if(instr->tokop3->len == 3)
             instr->op3 = token_getreg(instr->tokop3);
         else
-            printf("error: %s is not a register\n", instr->tokop3->str);
+            log_error(instr->fn, instr->ln, ERR_NOT_REG, instr->tokop3->str);
     }
 }
 
@@ -418,10 +419,11 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
             {
                 if(syms[s].val != -1)
                 {
-                    log_error("", instr->ln, ERR_LABEL_REDEF, syms[s].str);
+                    log_error(instr->fn, instr->ln, ERR_LABEL_REDEF, syms[s].str);
                     ret = -1;
                 }
                 syms[s].val = cur;
+                break;
             }
         }
         if(instr->isdata)
@@ -454,21 +456,32 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
         {
             continue;
         }
-        for(s = 0; s < ns; ++s)
+        if(instr->isdata)
         {
-            if(instr->isdata)
+            int d;
+            for(d = 0; d < instr->num_ops; ++d)
             {
-                int d;
-                for(d = 0; d < instr->num_ops; ++d)
+                if(token_getnum(instr->tokops[d]) != INT_MIN)
+                    continue;
+                for(s = 0; s < ns; ++s)
+                {
                     if(!strcmp(instr->tokops[d]->str, syms[s].str))
                     {
                         if(instr->data_size == instr->num_ops)
                             ((char *)instr->data)[d] = (char)syms[s].val;
                         else
                             ((short *)instr->data)[d] = (short)syms[s].val;
+                        break;
                     }
+                }
+                if(s == ns)
+                    log_error(instr->fn, instr->ln, ERR_NOT_LABEL,
+                            instr->tokops[d]->str);
             }
-            else
+        }
+        else
+        {
+            for(s = 0; s < ns; ++s)
             {
                 if(instr->tokop1 && strcmp(instr->tokop1->str, syms[s].str) == 0)
                 {
@@ -476,7 +489,7 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
                     if(instr->args != ARGS_I &&
                        instr->args != ARGS_I_I)
                     {
-                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
+                        log_error(instr->fn, instr->ln, ERR_NOT_REG, syms[s].str);
                         ret = -1;
                     }
                 }
@@ -486,7 +499,7 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
                     if(instr->args != ARGS_I_I &&
                        instr->args != ARGS_R_I)
                     {
-                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
+                        log_error(instr->fn, instr->ln, ERR_NOT_REG, syms[s].str);
                         ret = -1;
                     }
                 }
@@ -495,11 +508,17 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
                     instr->op3 = syms[s].val;
                     if(instr->args != ARGS_R_R_I)
                     {
-                        log_error("", instr->ln, ERR_NOT_REG, syms[s].str);
+                        log_error(instr->fn, instr->ln, ERR_NOT_REG, syms[s].str);
                         ret = -1;
                     }
                 }
             }
+            if(instr->op1 == INT_MIN)
+                log_error(instr->fn, instr->ln, ERR_NOT_LABEL, instr->tokop1->str);
+            if(instr->op2 == INT_MIN)
+                log_error(instr->fn, instr->ln, ERR_NOT_LABEL, instr->tokop2->str);
+            if(instr->op3 == INT_MIN)
+                log_error(instr->fn, instr->ln, ERR_NOT_LABEL, instr->tokop3->str);
         }
     }
 
