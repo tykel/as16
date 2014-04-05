@@ -53,7 +53,10 @@ string_t *string_alloc(char *cs, int len)
 /* Free the string_t structure and its underlying C string. */
 void string_free(string_t *str)
 {
-    free(str->str);
-    free(str);
+    if(str)
+    {
+        free(str->str);
+        free(str);
+    }
 }
 

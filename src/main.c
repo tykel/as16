@@ -39,8 +39,9 @@ typedef unsigned short uint16_t;
 
 static import_t *imports;
 static instr_t instrs[MAX_LINES];
+static int num_instrs;
 static symbol_t syms[MAX_LINES];
-static int symind;
+static int num_syms;
 
 
 void log_error(char *fn, int ln, err_t err, void *data)
@@ -216,7 +217,7 @@ static int file_parse(const char *fn, int base, import_t **imports)
         it->ln = ln;
         if(it->valid)
         {
-            instr_parse(it, syms, &symind);
+            instr_parse(it, syms, &num_syms);
             /* Handle an include directive. */
             if(it->tokmnem != NULL &&
                !strcmp(it->tokmnem->str, "include"))
@@ -244,9 +245,9 @@ static int file_parse(const char *fn, int base, import_t **imports)
                 (*imports)->label = it->tokops[3]->str;
                 (*imports)->next = NULL;
                
-                syms[symind].str = (*imports)->label;
-                syms[symind].val = -1;
-                syms[symind++].islabel = 1;
+                syms[num_syms].str = (*imports)->label;
+                syms[num_syms].val = -1;
+                syms[num_syms++].islabel = 1;
 
                 if(ipt != NULL)
                     *imports = ipt;
@@ -323,7 +324,7 @@ static int file_parse(const char *fn, int base, import_t **imports)
 }
 
 /* Print the help text. */
-void print_help(void)
+static void print_help(void)
 {
     printf("Usage: as16 SOURCE... [OPTION]...\n\n"
            "    Assemble SOURCE(s) to produce a Chip16 binary.\n\n"
@@ -341,10 +342,48 @@ void print_help(void)
 }
 
 /* Print the version information. */
-void print_ver(void)
+static void print_ver(void)
 {
     printf("as16 %d.%d.%d -- a Chip16 assembler\n",
             VER_MAJOR, VER_MINOR, VER_REV);
+}
+
+/* Free the imports linked list. */
+static void imports_free(void)
+{
+    import_t *cur, *next;
+
+    cur = imports;
+    if(cur == NULL)
+        return;
+    
+    while(cur)
+    {
+        next = cur->next;
+        free(cur);
+        cur = next;
+    }
+}
+
+/* Free the instructions array. */
+static void instrs_free(void)
+{
+    int i;
+    instr_t *it;
+   
+    it = &instrs[0];
+    for(i = 0; i < num_instrs; ++i, ++it)
+    {
+        int o;
+
+        string_free(it->line);
+        string_free(it->toklabel);
+        string_free(it->tokmnem);
+        for(o = 0; o < it->num_ops; ++o)
+            string_free(it->tokops[o]);
+        if(it->data)
+            free(it->data);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -352,11 +391,11 @@ int main(int argc, char *argv[])
     crc_t crc;
     header_t hdr;
     FILE *outfile;
-    int verbose, raw, zero, mmap, help, ver, ln, i, f, size;
+    int verbose, raw, zero, mmap, help, ver, i, f, size;
     unsigned char *outbuf, version;
     char *files[256], *output = "output.c16";
 
-    f = ln = raw = verbose = zero = mmap = help = ver = size = 0;
+    f = raw = verbose = zero = mmap = help = ver = size = 0;
     version = 0x13;
     /* Get options and filenames, and parse the latter. */
     if(argc > 1)
@@ -409,12 +448,16 @@ int main(int argc, char *argv[])
         }
         /* Otherwise, parse each file in order. */
         for(i = 0; i < f; i++)
-            ln += file_parse(files[i], ln, &imports);
+            num_instrs += file_parse(files[i], num_instrs, &imports);
     }
     
     /* Replace symbols by their numeric values. */
-    syms_replace(instrs, ln, syms, symind, imports);
+    syms_replace(instrs, num_instrs, syms, num_syms, imports);
 
+    /* Register the cleanup functions at exit. */
+    atexit(instrs_free);
+    atexit(imports_free);
+    
     /* Output a listing of label mappings, if requested. */
     if(mmap)
     {
@@ -425,7 +468,7 @@ int main(int argc, char *argv[])
         {
             fprintf(mmfile, "Label memory mapping:\n");
             fprintf(mmfile, "---------------------\n\n");
-            for(i = 0; i < symind; ++i)
+            for(i = 0; i < num_syms; ++i)
             {
                 if(syms[i].islabel)
                     fprintf(mmfile, " 0x%04x : %s\n", syms[i].val, syms[i].str);
@@ -439,14 +482,14 @@ int main(int argc, char *argv[])
     if(verbose)
     {
         printf("Symbol table\n------------\n");
-        for(i = 0; i < symind; ++i)
+        for(i = 0; i < num_syms; ++i)
         {
             printf("%02d: [ '%s' : %d / 0x%x ]\n",
                    i, syms[i].str, (short)syms[i].val, (uint16_t)syms[i].val);
         }
 
         printf("\nInstruction table\n-----------------\n");
-        for(i = 0; i < ln; ++i)
+        for(i = 0; i < num_instrs; ++i)
         {
             printf("%02d: ", instrs[i].ln);
             if(!instrs[i].valid)
@@ -473,7 +516,13 @@ int main(int argc, char *argv[])
 
     /* Write the program machine code. */
     outbuf = malloc(64 * 1024);
-    size = output_file(outbuf, instrs, ln, syms, symind, imports);
+    if(outbuf == NULL)
+    {
+        fprintf(stderr, "error: could not allocate %d bytes for output\n",
+                64*1024);
+        exit(1);
+    }
+    size = output_file(outbuf, instrs, num_instrs, syms, num_syms, imports);
     
     /* Write the header. */
     crc = crc_init();
@@ -486,7 +535,7 @@ int main(int argc, char *argv[])
     hdr.rom_size = size;
     hdr.start_addr = 0;
     hdr.crc32_sum = crc;
-    
+
     /* Write the program, and header unless requested, to disk. */
     outfile = fopen(output, "wb");
     if(outfile == NULL)
@@ -505,5 +554,7 @@ int main(int argc, char *argv[])
     }
     fclose(outfile);
         
+    free(outbuf);
+    
     exit(0);
 }

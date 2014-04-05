@@ -290,7 +290,7 @@ int instr_isequ(instr_t *instr)
 }
 
 /* Parse a line into an instruction. */
-int instr_parse(instr_t *instr, symbol_t *syms, int *symind)
+int instr_parse(instr_t *instr, symbol_t *syms, int *num_syms)
 {
     string_t *toktemp;
     char *sp;
@@ -308,19 +308,21 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *symind)
     if(token_iscomment(toktemp))
     {
         instr->iscomment = 1;
+        string_free(toktemp);
         return 0;
     }
     if(token_islabel(toktemp))
     {
         instr->toklabel = token_getlabel(toktemp);
-        syms[*symind].str = instr->toklabel->str;
-        syms[*symind].val = -1;
-        syms[(*symind)++].islabel = 1;
+        syms[*num_syms].str = instr->toklabel->str;
+        syms[*num_syms].val = -1;
+        syms[(*num_syms)++].islabel = 1;
     }
 
     /* Mnemonic */
     if(instr->toklabel != NULL)
     {
+        string_free(toktemp);
         if(*sp == '\0')
         {
             instr->islabel = 1;
@@ -330,6 +332,7 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *symind)
         if(token_iscomment(toktemp) || token_iswhitespace(toktemp))
         {
             instr->islabel = 1;
+            string_free(toktemp);
             return 0;
         }
         instr->tokmnem = toktemp;
@@ -361,7 +364,10 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *symind)
     {
         toktemp = token_next(&sp);
         if(token_iscomment(toktemp) || token_iswhitespace(toktemp))
+        {
+            string_free(toktemp);
             break;
+        }
         
         instr->tokops[i] = toktemp;
     
@@ -370,12 +376,13 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *symind)
         else if(i == 1)
         {
             instr->tokop2 = toktemp;
-            if((instr->tokop1->str[0] == 'e' || instr->tokop1->str[0] == 'E') &&
+            if(instr->tokop1->len > 3 &&
+               (instr->tokop1->str[0] == 'e' || instr->tokop1->str[0] == 'E') &&
                (instr->tokop1->str[1] == 'q' || instr->tokop1->str[1] == 'Q') &&
                (instr->tokop1->str[2] == 'u' || instr->tokop1->str[2] == 'U'))
             {
-                syms[*symind].str = instr->tokmnem->str;
-                syms[(*symind)++].val = token_getnum(instr->tokop2);
+                syms[*num_syms].str = instr->tokmnem->str;
+                syms[(*num_syms)++].val = token_getnum(instr->tokop2);
                 instr->isequ = 1;
             }
         }
