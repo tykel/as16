@@ -54,7 +54,7 @@ typedef struct
     int valid;
     int ln;
     const char *fn;
-    int iscomment, islabel, isequ, isdata;
+    int iscomment, islabel, isequ, isdata, isstart;
 
     instr_args_t args;
     instr_type_t type;
@@ -82,6 +82,6 @@ int instr_isequ(instr_t *instr);
 int instr_parse(instr_t *instr, symbol_t *syms, int *num_syms);
 
 int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
-        import_t *imports);
+        import_t *imports, int *start);
 
 #endif

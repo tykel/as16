@@ -43,6 +43,9 @@ static int num_instrs;
 static symbol_t syms[MAX_LINES];
 static int num_syms;
 
+static int start;
+static unsigned char version = 0x13;
+
 
 void log_error(const char *fn, int ln, err_t err, void *data)
 {
@@ -79,6 +82,10 @@ void log_error(const char *fn, int ln, err_t err, void *data)
     case ERR_NOT_LABEL:
         fprintf(stderr, "error: unknown constant '%s'\n", (char *)data);
         break;
+    case ERR_BAD_VER:
+        fprintf(stderr, "error: invalid start address '%s' (should be M.m)\n",
+                (char *)data);
+        break;
     default:
         fprintf(stderr, "error: unknown\n");
         break;
@@ -96,7 +103,7 @@ static int output_file(unsigned char *buf, instr_t *instrs, int ni, symbol_t *sy
     for(i = 0; i < ni; ++i)
     {
         instr_t *it = &instrs[i];
-        if(!it->valid || it->iscomment || it->islabel || it->isequ)
+        if(!it->valid || it->iscomment || it->islabel || it->isequ || it->isstart)
             continue;
         if(it->isdata)
         {
@@ -225,8 +232,27 @@ static int file_parse(const char *fn, int base, import_t **imports)
         if(it->valid)
         {
             instr_parse(it, syms, &num_syms);
-            /* Handle an include directive. */
+            /* Handle a start directive. */
             if(it->tokmnem != NULL &&
+               !strcmp(it->tokmnem->str, "start"))
+            {
+                it->isstart = 1;
+                start = token_getnum(it->tokop1);
+                it->valid = 0;
+            }
+            /* Handle a version directive. */
+            else if(it->tokmnem != NULL &&
+                    !strcmp(it->tokmnem->str, "version"))
+            {
+                if(!it->tokop1 || it->tokop1->len <= 3)
+                    log_error(it->fn, it->ln, ERR_BAD_VER, it->tokop1->str);
+                else
+                    version = (it->tokop1->str[0] - '0') << 4 |
+                              (it->tokop1->str[2] - '0');
+                it->valid = 0;
+            }
+            /* Handle an include directive. */
+            else if(it->tokmnem != NULL &&
                !strcmp(it->tokmnem->str, "include"))
             {
                 base += file_parse(it->tokop1->str, ln + base, imports);
@@ -402,11 +428,11 @@ int main(int argc, char *argv[])
     header_t hdr;
     FILE *outfile;
     int verbose, raw, zero, mmap, help, ver, i, f, size;
-    unsigned char *outbuf, version;
+    unsigned char *outbuf;
     char *files[256], *output = "output.c16";
 
     f = raw = verbose = zero = mmap = help = ver = size = 0;
-    version = 0x13;
+    
     /* Get options and filenames, and parse the latter. */
     if(argc > 1)
     {
@@ -465,7 +491,7 @@ int main(int argc, char *argv[])
     }
     
     /* Replace symbols by their numeric values. */
-    syms_replace(instrs, num_instrs, syms, num_syms, imports);
+    syms_replace(instrs, num_instrs, syms, num_syms, imports, &start);
 
     /* Register the cleanup functions at exit. */
     atexit(instrs_free);
@@ -546,7 +572,7 @@ int main(int argc, char *argv[])
     hdr.reserved = 0;
     hdr.spec_ver = version;
     hdr.rom_size = size;
-    hdr.start_addr = 0;
+    hdr.start_addr = start;
     hdr.crc32_sum = crc;
 
     /* Write the program, and header unless requested, to disk. */

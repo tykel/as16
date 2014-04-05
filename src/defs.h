@@ -39,7 +39,8 @@ typedef enum
     ERR_NOT_REG = -8,
     ERR_INVALID_OP = -9,
     ERR_BAD_ARGS = -10,
-    ERR_NOT_LABEL = -11
+    ERR_NOT_LABEL = -11,
+    ERR_BAD_VER = -12
 } err_t;
 
 

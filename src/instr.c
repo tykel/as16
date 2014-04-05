@@ -401,7 +401,7 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *num_syms)
  * In the case of labels, if unassigned give it its initial value.
  */
 int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
-        import_t *imports)
+        import_t *imports, int *start)
 {
     int i, s, ret;
     int cur;
@@ -454,7 +454,8 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
         instr_t *instr = &instrs[i];
         if(!instr->valid || instr->islabel || instr->iscomment)
         {
-            continue;
+            if(!instr->isstart)
+                continue;
         }
         if(instr->isdata)
         {
@@ -486,8 +487,9 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
                 if(instr->tokop1 && strcmp(instr->tokop1->str, syms[s].str) == 0)
                 {
                     instr->op1 = syms[s].val;
-                    if(instr->args != ARGS_I &&
-                       instr->args != ARGS_I_I)
+                    if(instr->isstart)
+                        *start = instr->op1;
+                    else if(instr->args != ARGS_I && instr->args != ARGS_I_I)
                     {
                         log_error(instr->fn, instr->ln, ERR_NOT_REG, syms[s].str);
                         ret = -1;
