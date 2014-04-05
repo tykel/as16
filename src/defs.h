@@ -40,9 +40,18 @@ typedef enum
     ERR_INVALID_OP = -9,
     ERR_BAD_ARGS = -10,
     ERR_NOT_LABEL = -11,
-    ERR_BAD_VER = -12
+    ERR_BAD_VER = -12,
+    ERR_INC_CYCLE = -13
 } err_t;
 
+
+/* Linked list of included files. */
+struct include;
+typedef struct include
+{
+    char *fn;
+    struct include *next;
+} include_t;
 
 /* Linked list for tracking binary imports in a file. */
 struct import;

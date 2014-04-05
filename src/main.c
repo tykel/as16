@@ -39,6 +39,7 @@ typedef unsigned short uint16_t;
 #define MAX_LINES 10000
 
 static import_t *imports;
+static include_t *includes;
 static instr_t instrs[MAX_LINES];
 static int num_instrs;
 static symbol_t syms[MAX_LINES];
@@ -86,6 +87,9 @@ void log_error(const char *fn, int ln, err_t err, void *data)
     case ERR_BAD_VER:
         fprintf(stderr, "error: invalid start address '%s' (should be M.m)\n",
                 (char *)data);
+        break;
+    case ERR_INC_CYCLE:
+        fprintf(stderr, "error: include cycle with file '%s'\n", (char *)data);
         break;
     default:
         fprintf(stderr, "error: unknown\n");
@@ -194,8 +198,9 @@ static int output_file(unsigned char *buf, instr_t *instrs, int ni, symbol_t *sy
 static int file_parse(const char *fn, int base, import_t **imports)
 {
     FILE *file;
-    char line[200] = {0};
+    include_t *prev, *head;
     int ln, len;
+    char line[200] = {0};
     
     ln = 0;
     file = fopen(fn, "r");
@@ -256,6 +261,26 @@ static int file_parse(const char *fn, int base, import_t **imports)
             else if(it->tokmnem != NULL &&
                !strcmp(it->tokmnem->str, "include"))
             {
+                /* Check for include cycle. */
+                prev = head = includes;
+                while(includes != NULL)
+                {
+                    prev = includes;
+                    if(!strcmp(includes->fn, it->tokop1->str))
+                    {
+                        log_error(it->fn, it->ln, ERR_INC_CYCLE, includes->fn);
+                        return 0;
+                    }
+                    includes = includes->next;
+                }
+                includes = malloc(sizeof(include_t));
+                includes->fn = it->tokop1->str;
+                includes->next = NULL;
+                if(prev != NULL)
+                    prev->next = includes;
+                if(head != NULL)
+                    includes = head;
+    
                 base += file_parse(it->tokop1->str, ln + base, imports);
                 it->valid = 0;
             }
@@ -423,6 +448,20 @@ static void instrs_free(void)
     }
 }
 
+/* Free the includes linked list. */
+static void includes_free(void)
+{
+    include_t *cur, *next;
+
+    cur = includes;
+    while(cur != NULL)
+    {
+        next = cur->next;
+        free(cur);
+        cur = next;
+    }
+}
+
 int main(int argc, char *argv[])
 {
     crc_t crc;
@@ -480,15 +519,15 @@ int main(int argc, char *argv[])
             print_ver();
             exit(0);
         }
-        /* If no file was supplied, complain and exit. */
-        if(f == 0)
-        {
-            fprintf(stderr, "error: no input file specified\n");
-            exit(1);
-        }
         /* Otherwise, parse each file in order. */
         for(i = 0; i < f; i++)
             num_instrs += file_parse(files[i], num_instrs, &imports);
+    }
+    /* If no file was supplied, complain and exit. */
+    if(f == 0)
+    {
+        fprintf(stderr, "error: no input file specified\n");
+        exit(1);
     }
     
     /* Replace symbols by their numeric values. */
@@ -497,6 +536,7 @@ int main(int argc, char *argv[])
     /* Register the cleanup functions at exit. */
     atexit(instrs_free);
     atexit(imports_free);
+    atexit(includes_free);
     
     /* Output a listing of label mappings, if requested. */
     if(mmap)
