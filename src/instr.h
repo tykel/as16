@@ -54,7 +54,8 @@ typedef struct
 {
     int valid;
     int ln;
-    const char *fn;
+    char *fn;
+    char *basedir;
     int iscomment, islabel, isequ, isdata, isstart;
 
     instr_args_t args;

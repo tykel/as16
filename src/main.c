@@ -36,6 +36,7 @@ typedef unsigned short uint16_t;
 #define VER_MINOR 0
 #define VER_REV   0
 
+#define MAX_FILES 256
 #define MAX_LINES 10000
 
 static import_t *imports;
@@ -44,6 +45,9 @@ static instr_t instrs[MAX_LINES];
 static int num_instrs;
 static symbol_t syms[MAX_LINES];
 static int num_syms;
+
+static char *files[MAX_FILES];
+static int f;
 
 static int start;
 static unsigned char version = 0x13;
@@ -196,7 +200,7 @@ static int output_file(unsigned char *buf, instr_t *instrs, int ni, symbol_t *sy
 }
 
 /* Parse a whole file at a time -- recursively calling itself for includes. */
-static int file_parse(const char *fn, int base, import_t **imports)
+static int file_parse(char *fn, int base, import_t **imports)
 {
     FILE *file;
     include_t *prev, *head;
@@ -213,9 +217,10 @@ static int file_parse(const char *fn, int base, import_t **imports)
 
     fgets(line, 200, file);
     
-    while(line != NULL && !feof(file))
+    while(!feof(file))
     {
         int c;
+        char *s, *t;
         instr_t *it;
 
         ++ln;
@@ -224,6 +229,13 @@ static int file_parse(const char *fn, int base, import_t **imports)
         it = &instrs[ln + base - 1];
         it->valid = 0;
         it->fn = fn;
+        t = fn;
+        while((s = strchr(t, '/')) != NULL)
+            t = s + 1;
+        it->basedir = malloc((int)(t - fn) + 1);
+        it->basedir[(int)(t - fn)] = '\0';
+        strncpy(it->basedir, fn, (int)(t - fn));
+
         for(c = 0; c < len; c++)
         {
             if(line[c] != ' ' && line[c] != '\t' && line[c] != '\0' &&
@@ -262,6 +274,7 @@ static int file_parse(const char *fn, int base, import_t **imports)
             else if(it->tokmnem != NULL &&
                !strcmp(it->tokmnem->str, "include"))
             {
+                char *efn;
                 /* Check for include cycle. */
                 prev = head = includes;
                 while(includes != NULL)
@@ -282,13 +295,17 @@ static int file_parse(const char *fn, int base, import_t **imports)
                 if(head != NULL)
                     includes = head;
     
-                base += file_parse(it->tokop1->str, ln + base, imports);
+                efn = calloc((t - fn) + it->tokop1->len, 1);
+                strcat(efn, it->basedir);
+                strcat(efn + (t - fn), it->tokop1->str);
+                base += file_parse(efn, ln + base, imports);
                 it->valid = 0;
             }
             /* Handle a binary import directive. */
             else if(it->tokmnem != NULL &&
                     !strcmp(it->tokmnem->str, "importbin"))
             {
+                char *efn;
                 import_t *ipt, *prev;
                 ipt = *imports, prev = NULL;
                 while(*imports != NULL)
@@ -299,7 +316,11 @@ static int file_parse(const char *fn, int base, import_t **imports)
                 *imports = malloc(sizeof(import_t));
                 if(prev)
                     prev->next = *imports;
-                (*imports)->fn = it->tokop1->str;
+                
+                efn = calloc((t - fn) + it->tokop1->len, 1);
+                strcat(efn, it->basedir);
+                strcat(efn + (t - fn), it->tokop1->str);
+                (*imports)->fn = efn;
                 (*imports)->start = token_getnum(it->tokop2);
                 (*imports)->len = token_getnum(it->tokop3);
                 (*imports)->label = it->tokops[3]->str;
@@ -382,7 +403,7 @@ static int file_parse(const char *fn, int base, import_t **imports)
         fgets(line, 200, file);
     }
 
-    return ln;
+    return ln + base;
 }
 
 /* Print the help text. */
@@ -423,6 +444,7 @@ static void imports_free(void)
     while(cur)
     {
         next = cur->next;
+        free(cur->fn);
         free(cur);
         cur = next;
     }
@@ -446,7 +468,10 @@ static void instrs_free(void)
             string_free(it->tokops[o]);
         if(it->data)
             free(it->data);
+        free(it->basedir);
     }
+    for(i = 0; i < f; ++i)
+        free(files[i]);
 }
 
 /* Free the includes linked list. */
@@ -468,9 +493,9 @@ int main(int argc, char *argv[])
     crc_t crc;
     header_t hdr;
     FILE *outfile;
-    int verbose, raw, zero, mmap, help, ver, i, f, size;
+    int verbose, raw, zero, mmap, help, ver, i, size;
     unsigned char *outbuf;
-    char *files[256], *output = "output.c16";
+    char *output = "output.c16";
 
     f = raw = verbose = zero = mmap = help = ver = size = 0;
     
@@ -506,7 +531,10 @@ int main(int argc, char *argv[])
                             argv[i]);
             }
             else
-                files[f++] = argv[i];
+            {
+                files[f] = malloc(strlen(argv[i]) + 1);
+                strcpy(files[f++], argv[i]);
+            }
         }
         /* If help text was requested, print that and do nothing else. */
         if(help)
@@ -572,6 +600,9 @@ int main(int argc, char *argv[])
         printf("\nInstruction table\n-----------------\n");
         for(i = 0; i < num_instrs; ++i)
         {
+            if(instrs[i].ln == 0)
+                continue;
+
             printf("%02d: ", instrs[i].ln);
             if(!instrs[i].valid)
                 printf("  [invalid          ]");
@@ -591,7 +622,7 @@ int main(int argc, char *argv[])
                        (uint16_t)instrs[i].op2,
                        (uint16_t)instrs[i].op3);
             
-            printf(" %s\n", instrs[i].line->str);
+            printf(" %s\n", instrs[i].line ? instrs[i].line->str : "");
         }
     }
 
