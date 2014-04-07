@@ -510,7 +510,7 @@ int syms_replace(instr_t *instrs, int ni, symbol_t *syms, int ns,
                             instr->tokops[d]->str);
             }
         }
-        else
+        else if(instr->isdata != DATA_STR)
         {
             for(s = 0; s < ns; ++s)
             {

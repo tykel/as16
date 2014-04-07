@@ -182,6 +182,11 @@ int token_getnum(string_t *str)
             offs = 1;
         }
     }
+    else if (str->str[0 + neg] == '#' && str->len > 2)
+    {
+        base = 16;
+        offs = 1;
+    }
 
     /* Set pointer to start of number proper */
     p = str->str + offs + neg;
