@@ -18,7 +18,7 @@ OBJECTS = $(patsubst $(SRC)/%.c, $(OBJ)/%.o, $(SOURCES))
 
 # Targets
 
-.PHONY: all clean 
+.PHONY: all clean man install uninstall
 
 all: as16 
 
@@ -30,7 +30,37 @@ $(OBJ)/%.o: $(SRC)/%.c
 	$(CC) -c $(CFLAGS) $< -o $@
 
 clean:
-	@echo "Removing object files..."
-	@rm -f $(OBJECTS) 
-	@echo "Removing executable..."
-	@rm -f as16
+	rm -f $(OBJECTS) 
+	rm -f as16 2>/dev/null
+	rm -f as16.1.gz 2>/dev/null
+
+install: as16 man
+ifneq ($(USER),root)
+	-@echo You are not root, please run: \'sudo make install\'
+else
+	cp as16 /usr/bin
+	cp as16.1.gz /usr/share/man/man1
+	-@echo Updating man-db ...
+	-@mandb --no-purge -q
+	-@echo done.
+endif
+
+uninstall:
+
+uninstall:
+ifneq ($(USER),root)
+	-@echo You are not root, please run: \'sudo make uninstall\'
+else
+	-@echo Removing binaries ...
+	-@rm /usr/bin/as16 2> /dev/null || true
+	-@echo Removing man page ...
+	-@rm /usr/share/man/man1/as16.1.gz 2> /dev/null || true
+	-@echo Updating man-db ... 
+	-@mandb --no-purge -q 
+	-@echo done.
+endif
+
+man: as16.1.gz
+as16.1.gz: as16.1
+	@gzip < as16.1 > as16.1.gz
+
