@@ -1,0 +1,169 @@
+.TH as16 1 "07 April 2014" "version 1.0.0"
+
+.SH NAME
+as16 - a chip16 assembler.
+
+.SH SYNOPSIS
+as16 SOURCE... [-o DEST] [-h] [--help] [-m] [--mmap]
+               [-r] [--raw] [-v] [--verbose] [--version] [-z] [--zero]
+
+.SH DESCRIPTION
+.B as16
+is an assembler targeting the chip16 platform.
+.PP
+It provides most standard assembly language functionality, and some
+features oriented more towards games.
+.PP
+It replaces tchip16.
+
+.SH OPTIONS
+.B "-o DEST"
+.RS
+Sets the name of the output file to DEST, overriding the default
+.I "output.c16."
+.RE
+.PP
+.B "-m, --mmap"
+.RS
+Outputs 
+.I "mmap.txt"
+, which lists the address of each label.
+.RE
+.PP
+.B "-h, --help"
+.RS
+Displays help text, then exits.
+.RE
+.PP
+.B "-r, --raw "
+.RS
+Omits the header from the destination file, keeping only the raw binary.
+.RE
+.PP
+.B "-v, --verbose"
+.RS
+Switches to verbose output, detail each step of assembly.
+.RE
+.PP
+.B "--version "
+.RS
+Displays the current program version, then exits.
+.RE
+.PP
+.B "-z, --zero"
+.RS
+If the destination file size is less than 65,536 bytes, pad it with 
+zeroes to reach that size.
+
+.SH DIRECTIVES
+Assembly directives specific to this assembler:
+.RS
+.PP
+.B "start "
+ADDR
+.RS
+Sets the initial address to load into the PC register, which will
+be stored in the header. Default is 0x0000.
+.RE
+.PP
+.B "version "
+M.m
+.RS
+Sets the chip16 specification version used to be M.m, which will be
+stored in the header. Default is 1.1.
+.RE
+.PP
+NAME
+.B " equ "
+VAL
+.RS
+Defines a constant NAME to have value VAL. All occurrences of NAME
+in all files will subsequently be replaces with VAL.
+Use $- prefixed to a string label for the length of the string.
+.RE
+.PP
+.B "db "
+VAL...
+.RS
+Stores the byte VAL(s) at this position in the program.
+.RE
+.PP
+.B "db "
+STRING
+.RS
+Stores the string constant STRING in ASCII format, at this position
+in the program.
+.RE
+.PP
+.B "dw "
+VAL...
+.RS
+Stores the (16-bit) word VAL(s) in little endian format, at this
+position in the program.
+.RE
+.PP
+.B "include "
+FILE
+.RS
+Includes the source file FILE at this position for assembly.
+.RE
+.PP
+.B "importbin "
+FILE OFFSET LENGTH LABEL
+.RS
+Appends FILE (from OFFSET to OFFSET+LENGTH) at the
+end of the binary, at label LABEL.
+.RE
+.RE
+
+.SH EXAMPLE
+Consider the following dummy source file 
+.B "test.s"
+:
+.PP
+.RS
+ start      label2
+ version    1.0
+ constant1  equ 0x1000
+ constant2  equ $-string
+ lucky      equ 7
+.PP
+ label1:    add r0, r1
+            muli r0, lucky
+            sub r0 r2        ; Test
+            jnz label1
+ ; Testing
+ label2:
+            ldi r4,string
+            call print_str
+ string:    db "Hello world"
+ :vals      db 0x00, $01, #02, 10, 11h
+ w_vals:    dw 256, 65535, -2000
+ print_str: ret
+.RE
+.PP
+Assemble it with the following command to produce a basic chip16 ROM with a header:
+.RS
+as16
+.B "test.s"
+-o test.c16
+.RE
+You can then try it out in the emulator of your choice.
+.PP
+Labels must end with a colon ":".
+.RE
+Commas and/or whitespace delimit instructions/operands.
+.RE
+0x10 and #10 denote hex 16; 0b1010 denotes a binary 10; 010 denotes an octal 8;
+and 9 denotes a decimal 9.
+.PP
+For more information on chip16 instructions, please refer to the chip16 specification.
+
+.SH BUGS
+Please report any issues at https://github.com/tykel/as16/issues,
+or failing that, please send me an email with a description of the problem.
+.PP
+
+.SH AUTHOR
+Tim Kelsall <timothy.kelsallgmail.com> -- author and Chip16 project lead
+
