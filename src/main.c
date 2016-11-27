@@ -571,6 +571,11 @@ int main(int argc, char *argv[])
     if(mmap)
     {
         FILE *mmfile = NULL;
+        FILE *mmbfile = NULL;
+        char mmbfn[100];
+        char *cp = &mmbfn[99];
+
+        /* Write human-readable file, first. */
         if((mmfile = fopen("mmap.txt", "w")) == NULL)
             fprintf(stderr, "error: could not write to mmap.txt\n");
         else
@@ -584,6 +589,66 @@ int main(int argc, char *argv[])
             }
             fprintf(mmfile, "\n---------------------\n");
             fclose(mmfile);
+        }
+        
+        /* Now write symbol file for use with emulators. */
+        memset(mmbfn, 0, 100);
+        strncpy(mmbfn, output, 100);
+        while(cp > mmbfn && *cp != '.')
+           cp--;
+        if(cp <= mmbfn + 97)
+        {
+            *++cp = 's';
+            *++cp = 'y';
+            *++cp = 'm';
+        }
+
+        if((mmbfile = fopen(mmbfn, "wb")) == NULL)
+           fprintf(stderr, "error: could not write to %s\n", mmbfn);
+        else
+        {
+           int numlabels = 0;
+           int j;
+           struct {
+              union {
+                 uint16_t w[2];
+                 uint32_t q;
+              } d;
+           } data;
+           struct {
+              char *str;
+              uint16_t str_offs;
+              uint16_t value;
+           } labels[1024];
+           
+           for(j = 0; j < num_syms; j++)
+           {
+              if(syms[j].islabel)
+              {
+                 labels[numlabels].str = syms[j].str;
+                 labels[numlabels].value = syms[j].val;
+                 labels[numlabels].str_offs = numlabels > 0
+                    ? labels[numlabels-1].str_offs + strlen(labels[numlabels-1].str) + 1: 0;
+                 numlabels++;
+              }
+           }
+           data.d.q = numlabels * 4 + 4;
+           fwrite(&data, sizeof(data), 1, mmbfile);
+           for(j = 0; j < numlabels; j++)
+           {
+              data.d.w[0] = labels[j].value;
+              data.d.w[1] = labels[j].str_offs;
+              fwrite(&data, sizeof(data), 1, mmbfile);
+           }
+           for(j = 0; j < numlabels; j++)
+           {
+              char zero = 0;
+              size_t len = strlen(labels[j].str);
+              fwrite(labels[j].str, len, 1, mmbfile);
+              fwrite(&zero, 1, 1, mmbfile);
+           }
+
+           fclose(mmbfile);
         }
     }
     /* Output the symbol table, and internal representation of instructions, if
