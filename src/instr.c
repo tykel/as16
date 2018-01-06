@@ -218,7 +218,7 @@ void op_fix(instr_t *instr)
         instr->op++;
         instr->args = ARGS_R_R_R;
     }
-    else if((op == 0xB0 || op == 0xB1 || op == 0xB2) && instr->args == ARGS_R_R)
+    else if((op == 0xB0 || op == 0xB1 || op == 0xB2) && instr->tokop2 != NULL && instr->tokop2->str[0] == 'r')
     {
         instr->op += 3;
         instr->args = ARGS_R_R;
