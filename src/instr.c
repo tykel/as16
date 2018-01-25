@@ -204,6 +204,12 @@ void op_fix(instr_t *instr)
         instr->op++;
         instr->args = ARGS_SP_I;
     }
+    else if(op == 0x14 && instr->tokop1 != NULL &&
+            instr->tokop1->len > 2 && instr->tokop1->str[0] == 'r')
+    {
+       instr->op = 0x18;
+       instr->args = ARGS_R;
+    }
     else if((op == 0x22 || op == 0x30) && instr->tokop2 != NULL &&
             instr->tokop2->len > 2 && instr->tokop2->str[0] == 'r')
     {
