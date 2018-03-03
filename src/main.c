@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <getopt.h>
 
 #include "defs.h"
 #include "strings.h"
@@ -496,62 +497,64 @@ int main(int argc, char *argv[])
     int verbose, raw, zero, mmap, help, ver, i, size;
     unsigned char *outbuf;
     char *output = "output.c16";
+    int longindex, opt;
+    struct option longopts[] = {
+        { "--verbose", 0, NULL, 0 },
+        { "--raw", 0, NULL, 0 },
+        { "--zero", 0, NULL, 0 },
+        { "--mmap", 0, NULL, 0 },
+        { "--help", 0, NULL, 0 },
+        { 0, 0, 0, 0 },
+    };
 
     f = raw = verbose = zero = mmap = help = ver = size = 0;
     
     /* Get options and filenames, and parse the latter. */
-    if(argc > 1)
-    {
-        for(i = 1; i < argc; i++)
-        {
-            if(argv[i][0] == '-')
-            {
-                if(!strcmp(argv[i], "-v") || !strcmp(argv[i], "--verbose"))
-                    verbose = 1;
-                else if(!strcmp(argv[i], "-r") || !strcmp(argv[i], "--raw"))
-                    raw = 1;
-                else if(!strcmp(argv[i], "-z") || !strcmp(argv[i], "--zero"))
-                    zero = 1;
-                else if(!strcmp(argv[i], "-m") || !strcmp(argv[i], "--mmap"))
-                    mmap = 1;
-                else if(!strcmp(argv[i], "-h") || !strcmp(argv[i], "--help"))
-                    help = 1;
-                else if(!strcmp(argv[i], "--version"))
-                    ver = 1;
-                else if(!strcmp(argv[i], "-o"))
-                {
-                    if(argc > i + 1)
-                        output = argv[++i];
-                    else
-                        fprintf(stderr, "warning: no output filename supplied"
-                                        " with -o option; using default\n");
-                }
-                else
-                    fprintf(stderr, "warning: unknown option '%s', ignoring\n",
-                            argv[i]);
-            }
-            else
-            {
-                files[f] = malloc(strlen(argv[i]) + 1);
-                strcpy(files[f++], argv[i]);
-            }
+    while ((opt = getopt_long(argc, argv, "vrzmho:", longopts, &longindex)) != -1) {
+        switch (opt) {
+            case 'v':
+                verbose = 1;
+                ;
+            case 'r':
+                raw = 1;
+                break;
+            case 'z':
+                zero = 1;
+                break;
+            case 'm':
+                mmap = 1;
+                break;
+            case 'h':
+                help = 1;
+                break;
+            case 'o':
+                output = optarg;
+                break;
+            default:
+                print_help();
+                exit(0);
         }
-        /* If help text was requested, print that and do nothing else. */
-        if(help)
-        {
-            print_help();
-            exit(0);
-        }
-        /* Similarly for version information. */
-        else if(ver)
-        {
-            print_ver();
-            exit(0);
-        }
-        /* Otherwise, parse each file in order. */
-        for(i = 0; i < f; i++)
-            num_instrs += file_parse(files[i], num_instrs, &imports);
     }
+    while (optind < argc)    
+    {
+        files[f] = malloc(strlen(argv[optind]) + 1);
+        strcpy(files[f++], argv[optind++]);
+    }
+    /* If help text was requested, print that and do nothing else. */
+    if(help)
+    {
+        print_help();
+        exit(0);
+    }
+    /* Similarly for version information. */
+    else if(ver)
+    {
+        print_ver();
+        exit(0);
+    }
+    /* Otherwise, parse each file in order. */
+    for(i = 0; i < f; i++)
+        num_instrs += file_parse(files[i], num_instrs, &imports);
     /* If no file was supplied, complain and exit. */
     if(f == 0)
     {

@@ -5,7 +5,7 @@
 # Common definitions
 
 CC = gcc
-CFLAGS = -O2 -Wall -Wno-strict-aliasing -Wno-unused-function -std=c89 -pedantic 
+CFLAGS = -O0 -g -Wall -Wno-strict-aliasing -Wno-unused-function -std=c89 -pedantic 
 LDFLAGS = 
 
 # Directories
