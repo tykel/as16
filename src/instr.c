@@ -169,9 +169,13 @@ void op_getops(instr_t *instr)
         else
             log_error(instr->fn, instr->ln, ERR_NOT_REG, instr->tokop1->str);
     }
+    else if(at == ARGS_SP_I)
+    {
+        instr->op1 = 0;
+    }
 
     /* Second argument. */
-    if(at == ARGS_I_I || at == ARGS_R_I)
+    if(at == ARGS_I_I || at == ARGS_R_I || at == ARGS_SP_I)
         instr->op2 = token_getnum(instr->tokop2);
     else if(at == ARGS_R_R || at == ARGS_R_R_I || at == ARGS_R_R_R)
     {
@@ -348,6 +352,8 @@ int instr_parse(instr_t *instr, symbol_t *syms, int *num_syms)
         instr->tokmnem = toktemp;
     
     if(!strcmp(instr->tokmnem->str, "db") || !strcmp(instr->tokmnem->str, "dw"))
+        instr->isdata = 1;
+    if(!strcmp(instr->tokmnem->str, "resb") || !strcmp(instr->tokmnem->str, "resw"))
         instr->isdata = 1;
 
     /* Make first operand the condition code for jumps */
